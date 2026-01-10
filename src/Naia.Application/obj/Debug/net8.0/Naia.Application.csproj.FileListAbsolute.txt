@@ -1,0 +1,15 @@
+C:\naia3\src\Naia.Application\bin\Debug\net8.0\Naia.Application.deps.json
+C:\naia3\src\Naia.Application\bin\Debug\net8.0\Naia.Application.dll
+C:\naia3\src\Naia.Application\bin\Debug\net8.0\Naia.Application.pdb
+C:\naia3\src\Naia.Application\bin\Debug\net8.0\Naia.Domain.dll
+C:\naia3\src\Naia.Application\bin\Debug\net8.0\Naia.Domain.pdb
+C:\naia3\src\Naia.Application\obj\Debug\net8.0\Naia.Application.csproj.AssemblyReference.cache
+C:\naia3\src\Naia.Application\obj\Debug\net8.0\Naia.Application.GeneratedMSBuildEditorConfig.editorconfig
+C:\naia3\src\Naia.Application\obj\Debug\net8.0\Naia.Application.AssemblyInfoInputs.cache
+C:\naia3\src\Naia.Application\obj\Debug\net8.0\Naia.Application.AssemblyInfo.cs
+C:\naia3\src\Naia.Application\obj\Debug\net8.0\Naia.Application.csproj.CoreCompileInputs.cache
+C:\naia3\src\Naia.Application\obj\Debug\net8.0\Naia.App.53FD13E7.Up2Date
+C:\naia3\src\Naia.Application\obj\Debug\net8.0\Naia.Application.dll
+C:\naia3\src\Naia.Application\obj\Debug\net8.0\refint\Naia.Application.dll
+C:\naia3\src\Naia.Application\obj\Debug\net8.0\Naia.Application.pdb
+C:\naia3\src\Naia.Application\obj\Debug\net8.0\ref\Naia.Application.dll

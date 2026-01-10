@@ -1,0 +1,17 @@
+C:\naia3\src\Naia.Connectors\bin\Debug\net8.0\Naia.Connectors.deps.json
+C:\naia3\src\Naia.Connectors\bin\Debug\net8.0\Naia.Connectors.dll
+C:\naia3\src\Naia.Connectors\bin\Debug\net8.0\Naia.Connectors.pdb
+C:\naia3\src\Naia.Connectors\bin\Debug\net8.0\Naia.Application.dll
+C:\naia3\src\Naia.Connectors\bin\Debug\net8.0\Naia.Domain.dll
+C:\naia3\src\Naia.Connectors\bin\Debug\net8.0\Naia.Domain.pdb
+C:\naia3\src\Naia.Connectors\bin\Debug\net8.0\Naia.Application.pdb
+C:\naia3\src\Naia.Connectors\obj\Debug\net8.0\Naia.Connectors.csproj.AssemblyReference.cache
+C:\naia3\src\Naia.Connectors\obj\Debug\net8.0\Naia.Connectors.GeneratedMSBuildEditorConfig.editorconfig
+C:\naia3\src\Naia.Connectors\obj\Debug\net8.0\Naia.Connectors.AssemblyInfoInputs.cache
+C:\naia3\src\Naia.Connectors\obj\Debug\net8.0\Naia.Connectors.AssemblyInfo.cs
+C:\naia3\src\Naia.Connectors\obj\Debug\net8.0\Naia.Connectors.csproj.CoreCompileInputs.cache
+C:\naia3\src\Naia.Connectors\obj\Debug\net8.0\Naia.Con.D3C5BAD4.Up2Date
+C:\naia3\src\Naia.Connectors\obj\Debug\net8.0\Naia.Connectors.dll
+C:\naia3\src\Naia.Connectors\obj\Debug\net8.0\refint\Naia.Connectors.dll
+C:\naia3\src\Naia.Connectors\obj\Debug\net8.0\Naia.Connectors.pdb
+C:\naia3\src\Naia.Connectors\obj\Debug\net8.0\ref\Naia.Connectors.dll

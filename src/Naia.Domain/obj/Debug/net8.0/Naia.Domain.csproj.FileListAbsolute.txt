@@ -1,0 +1,11 @@
+C:\naia3\src\Naia.Domain\bin\Debug\net8.0\Naia.Domain.deps.json
+C:\naia3\src\Naia.Domain\bin\Debug\net8.0\Naia.Domain.dll
+C:\naia3\src\Naia.Domain\bin\Debug\net8.0\Naia.Domain.pdb
+C:\naia3\src\Naia.Domain\obj\Debug\net8.0\Naia.Domain.GeneratedMSBuildEditorConfig.editorconfig
+C:\naia3\src\Naia.Domain\obj\Debug\net8.0\Naia.Domain.AssemblyInfoInputs.cache
+C:\naia3\src\Naia.Domain\obj\Debug\net8.0\Naia.Domain.AssemblyInfo.cs
+C:\naia3\src\Naia.Domain\obj\Debug\net8.0\Naia.Domain.csproj.CoreCompileInputs.cache
+C:\naia3\src\Naia.Domain\obj\Debug\net8.0\Naia.Domain.dll
+C:\naia3\src\Naia.Domain\obj\Debug\net8.0\refint\Naia.Domain.dll
+C:\naia3\src\Naia.Domain\obj\Debug\net8.0\Naia.Domain.pdb
+C:\naia3\src\Naia.Domain\obj\Debug\net8.0\ref\Naia.Domain.dll

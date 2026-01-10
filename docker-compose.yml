@@ -1,0 +1,275 @@
+# NAIA v3 Docker Compose Stack
+# 
+# Services:
+# - PostgreSQL: Metadata storage (points, data sources)
+# - QuestDB: Time-series storage
+# - Redis: Current value cache + idempotency store
+# - Kafka + Zookeeper: Message backbone
+# - Kafka UI: Management interface
+#
+# Usage:
+#   docker-compose up -d       # Start all services
+#   docker-compose down -v     # Stop and remove volumes
+#   docker-compose logs -f     # Follow logs
+
+version: '3.8'
+
+services:
+  # =============================================================================
+  # POSTGRESQL - Metadata Storage
+  # =============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: naia-postgres
+    hostname: postgres
+    environment:
+      POSTGRES_USER: naia
+      POSTGRES_PASSWORD: naia_dev_password
+      POSTGRES_DB: naia
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U naia -d naia"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - naia-network
+
+  # =============================================================================
+  # QUESTDB - Time-Series Storage
+  # =============================================================================
+  questdb:
+    image: questdb/questdb:7.4.2
+    container_name: naia-questdb
+    hostname: questdb
+    environment:
+      QDB_TELEMETRY_ENABLED: "false"
+      # HTTP/ILP port config
+      QDB_HTTP_ENABLED: "true"
+      QDB_HTTP_BIND_TO: "0.0.0.0:9000"
+      # PostgreSQL wire protocol
+      QDB_PG_ENABLED: "true"
+      QDB_PG_BIND_TO: "0.0.0.0:8812"
+      # ILP over TCP (alternative to HTTP)
+      QDB_LINE_TCP_ENABLED: "true"
+      QDB_LINE_TCP_BIND_TO: "0.0.0.0:9009"
+      # Performance tuning
+      QDB_CAIRO_COMMIT_LAG: "1000"
+      QDB_CAIRO_MAX_UNCOMMITTED_ROWS: "100000"
+    ports:
+      - "9000:9000"   # HTTP API + Web Console
+      - "8812:8812"   # PostgreSQL wire protocol
+      - "9009:9009"   # ILP TCP
+    volumes:
+      - questdb_data:/var/lib/questdb
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - naia-network
+
+  # =============================================================================
+  # REDIS - Current Value Cache + Idempotency Store
+  # =============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: naia-redis
+    hostname: redis
+    command: >
+      redis-server 
+      --appendonly yes 
+      --maxmemory 512mb 
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - naia-network
+
+  # =============================================================================
+  # ZOOKEEPER - Kafka Coordination
+  # =============================================================================
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.3
+    container_name: naia-zookeeper
+    hostname: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_4LW_COMMANDS_WHITELIST: "srvr,ruok"
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
+    healthcheck:
+      test: ["CMD-SHELL", "echo srvr | nc localhost 2181 | grep -q Mode || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - naia-network
+
+  # =============================================================================
+  # KAFKA - Message Backbone
+  # =============================================================================
+  kafka:
+    image: confluentinc/cp-kafka:7.5.3
+    container_name: naia-kafka
+    hostname: kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      
+      # Listeners
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      
+      # Topic defaults
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_NUM_PARTITIONS: 12
+      
+      # Performance
+      KAFKA_LOG_RETENTION_HOURS: 168  # 7 days
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824  # 1GB
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 300000
+      
+      # Producer settings for idempotence
+      KAFKA_ENABLE_IDEMPOTENCE: "true"
+      
+      # Auto-create topics (for dev)
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9092:9092"    # External (host)
+      - "29092:29092"  # Internal (docker network)
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - naia-network
+
+  # =============================================================================
+  # KAFKA INIT - Create Topics
+  # =============================================================================
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.3
+    container_name: naia-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command: >
+      bash -c "
+        echo 'Waiting for Kafka to be ready...'
+        sleep 10
+        
+        echo 'Creating topics...'
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists \
+          --topic naia.datapoints \
+          --partitions 12 \
+          --replication-factor 1 \
+          --config retention.ms=604800000 \
+          --config cleanup.policy=delete
+        
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists \
+          --topic naia.datapoints.dlq \
+          --partitions 3 \
+          --replication-factor 1 \
+          --config retention.ms=2592000000 \
+          --config cleanup.policy=delete
+        
+        echo 'Topics created:'
+        kafka-topics --bootstrap-server kafka:29092 --list
+        
+        echo 'Kafka initialization complete!'
+      "
+    networks:
+      - naia-network
+
+  # =============================================================================
+  # KAFKA UI - Management Interface
+  # =============================================================================
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: naia-kafka-ui
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: naia-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    networks:
+      - naia-network
+
+  # =============================================================================
+  # REDIS COMMANDER - Redis Management UI (Optional)
+  # =============================================================================
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: naia-redis-commander
+    depends_on:
+      - redis
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+    networks:
+      - naia-network
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+volumes:
+  postgres_data:
+    name: naia-postgres-data
+  questdb_data:
+    name: naia-questdb-data
+  redis_data:
+    name: naia-redis-data
+  zookeeper_data:
+    name: naia-zookeeper-data
+  zookeeper_log:
+    name: naia-zookeeper-log
+  kafka_data:
+    name: naia-kafka-data
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+networks:
+  naia-network:
+    name: naia-network
+    driver: bridge
