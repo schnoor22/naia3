@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Naia.Application.Abstractions;
 using Npgsql;
@@ -13,11 +14,14 @@ public class SuggestionRepository : ISuggestionRepository
 {
     private readonly NaiaDbContext _db;
     private readonly ILogger<SuggestionRepository> _logger;
+    private readonly string _connectionString;
 
-    public SuggestionRepository(NaiaDbContext db, ILogger<SuggestionRepository> logger)
+    public SuggestionRepository(NaiaDbContext db, ILogger<SuggestionRepository> logger, IConfiguration configuration)
     {
         _db = db;
         _logger = logger;
+        _connectionString = configuration.GetConnectionString("PostgreSql") 
+            ?? "Host=localhost;Database=naia;Username=naia;Password=naia_dev_password;SslMode=Disable;Pooling=false";
     }
 
     public async Task<IReadOnlyList<SuggestionDto>> GetPendingAsync(int skip = 0, int take = 50, CancellationToken ct = default)
@@ -35,7 +39,7 @@ public class SuggestionRepository : ISuggestionRepository
 
         var suggestions = new List<SuggestionDto>();
         
-        await using var conn = new NpgsqlConnection(_db.Database.GetConnectionString());
+        await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
         
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -75,7 +79,7 @@ public class SuggestionRepository : ISuggestionRepository
             JOIN behavioral_clusters c ON s.cluster_id = c.id
             WHERE s.id = @id";
 
-        await using var conn = new NpgsqlConnection(_db.Database.GetConnectionString());
+        await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
         
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -156,7 +160,7 @@ public class SuggestionRepository : ISuggestionRepository
 
         var suggestions = new List<SuggestionDto>();
         
-        await using var conn = new NpgsqlConnection(_db.Database.GetConnectionString());
+        await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
         
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -186,7 +190,7 @@ public class SuggestionRepository : ISuggestionRepository
     {
         var sql = "SELECT COUNT(*) FROM pattern_suggestions WHERE status = 'pending'";
         
-        await using var conn = new NpgsqlConnection(_db.Database.GetConnectionString());
+        await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
         
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -211,7 +215,7 @@ public class SuggestionRepository : ISuggestionRepository
                 rate_score = EXCLUDED.rate_score,
                 reason = EXCLUDED.reason";
 
-        await using var conn = new NpgsqlConnection(_db.Database.GetConnectionString());
+        await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
         
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -241,7 +245,7 @@ public class SuggestionRepository : ISuggestionRepository
                 rejection_reason = @reason
             WHERE id = @id";
 
-        await using var conn = new NpgsqlConnection(_db.Database.GetConnectionString());
+        await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
         
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -264,7 +268,7 @@ public class SuggestionRepository : ISuggestionRepository
                 COUNT(*) FILTER (WHERE status = 'rejected') as total_rejected
             FROM pattern_suggestions";
 
-        await using var conn = new NpgsqlConnection(_db.Database.GetConnectionString());
+        await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
         
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -300,11 +304,14 @@ public class PatternRepository : IPatternRepository
 {
     private readonly NaiaDbContext _db;
     private readonly ILogger<PatternRepository> _logger;
+    private readonly string _connectionString;
 
-    public PatternRepository(NaiaDbContext db, ILogger<PatternRepository> logger)
+    public PatternRepository(NaiaDbContext db, ILogger<PatternRepository> logger, IConfiguration configuration)
     {
         _db = db;
         _logger = logger;
+        _connectionString = configuration.GetConnectionString("PostgreSql") 
+            ?? "Host=localhost;Database=naia;Username=naia;Password=naia_dev_password;SslMode=Disable;Pooling=false";
     }
 
     public async Task<IReadOnlyList<PatternDto>> GetAllAsync(CancellationToken ct = default)
@@ -321,7 +328,7 @@ public class PatternRepository : IPatternRepository
 
         var patterns = new List<PatternDto>();
         
-        await using var conn = new NpgsqlConnection(_db.Database.GetConnectionString());
+        await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
         
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -355,7 +362,7 @@ public class PatternRepository : IPatternRepository
                    is_system_pattern, created_at, last_matched_at
             FROM patterns WHERE id = @id";
 
-        await using var conn = new NpgsqlConnection(_db.Database.GetConnectionString());
+        await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
         
         await using var patternCmd = new NpgsqlCommand(patternSql, conn);
@@ -454,7 +461,7 @@ public class PatternRepository : IPatternRepository
 
         var patterns = new List<PatternDto>();
         
-        await using var conn = new NpgsqlConnection(_db.Database.GetConnectionString());
+        await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
         
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -491,7 +498,7 @@ public class PatternRepository : IPatternRepository
                 AVG(confidence) as avg_confidence
             FROM patterns";
 
-        await using var conn = new NpgsqlConnection(_db.Database.GetConnectionString());
+        await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
         
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -525,3 +532,4 @@ public class PatternRepository : IPatternRepository
         return stats;
     }
 }
+
