@@ -1,8 +1,3 @@
-C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\Naia.Infrastructure.csproj.AssemblyReference.cache
-C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\Naia.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
-C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\Naia.Infrastructure.AssemblyInfoInputs.cache
-C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\Naia.Infrastructure.AssemblyInfo.cs
-C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\Naia.Infrastructure.csproj.CoreCompileInputs.cache
 C:\naia3\src\Naia.Infrastructure\bin\Debug\net8.0\Naia.Infrastructure.deps.json
 C:\naia3\src\Naia.Infrastructure\bin\Debug\net8.0\Naia.Infrastructure.dll
 C:\naia3\src\Naia.Infrastructure\bin\Debug\net8.0\Naia.Infrastructure.pdb
@@ -10,6 +5,11 @@ C:\naia3\src\Naia.Infrastructure\bin\Debug\net8.0\Naia.Application.dll
 C:\naia3\src\Naia.Infrastructure\bin\Debug\net8.0\Naia.Domain.dll
 C:\naia3\src\Naia.Infrastructure\bin\Debug\net8.0\Naia.Domain.pdb
 C:\naia3\src\Naia.Infrastructure\bin\Debug\net8.0\Naia.Application.pdb
+C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\Naia.Infrastructure.csproj.AssemblyReference.cache
+C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\Naia.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\Naia.Infrastructure.AssemblyInfoInputs.cache
+C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\Naia.Infrastructure.AssemblyInfo.cs
+C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\Naia.Infrastructure.csproj.CoreCompileInputs.cache
 C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\Naia.Inf.A2C8654A.Up2Date
 C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\Naia.Infrastructure.dll
 C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\refint\Naia.Infrastructure.dll

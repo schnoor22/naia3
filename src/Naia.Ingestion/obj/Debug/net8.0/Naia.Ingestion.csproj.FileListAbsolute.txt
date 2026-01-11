@@ -28,6 +28,7 @@ C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Microsoft.Extensions.FileProviders.
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Microsoft.Extensions.FileSystemGlobbing.dll
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Microsoft.Extensions.Hosting.dll
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Microsoft.Extensions.Hosting.Abstractions.dll
+C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Microsoft.Extensions.Http.dll
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Microsoft.Extensions.Logging.dll
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Microsoft.Extensions.Logging.Abstractions.dll
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Microsoft.Extensions.Logging.Configuration.dll
@@ -37,6 +38,7 @@ C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Microsoft.Extensions.Logging.EventL
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Microsoft.Extensions.Logging.EventSource.dll
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Microsoft.Extensions.Options.dll
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Microsoft.Extensions.Options.ConfigurationExtensions.dll
+C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Microsoft.Extensions.Options.DataAnnotations.dll
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Microsoft.Extensions.Primitives.dll
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\net-questdb-client.dll
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Npgsql.dll
@@ -72,9 +74,11 @@ C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\runtimes\win-x86\native\zstd.dll
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\runtimes\win\lib\net8.0\System.Diagnostics.EventLog.Messages.dll
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\runtimes\win\lib\net8.0\System.Diagnostics.EventLog.dll
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Naia.Application.dll
+C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Naia.Connectors.dll
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Naia.Domain.dll
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Naia.Infrastructure.dll
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Naia.Application.pdb
+C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Naia.Connectors.pdb
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Naia.Infrastructure.pdb
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Naia.Domain.pdb
 C:\naia3\src\Naia.Ingestion\obj\Debug\net8.0\Naia.Ingestion.csproj.AssemblyReference.cache
@@ -88,6 +92,3 @@ C:\naia3\src\Naia.Ingestion\obj\Debug\net8.0\refint\Naia.Ingestion.dll
 C:\naia3\src\Naia.Ingestion\obj\Debug\net8.0\Naia.Ingestion.pdb
 C:\naia3\src\Naia.Ingestion\obj\Debug\net8.0\Naia.Ingestion.genruntimeconfig.cache
 C:\naia3\src\Naia.Ingestion\obj\Debug\net8.0\ref\Naia.Ingestion.dll
-C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Microsoft.Extensions.Http.dll
-C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Naia.Connectors.dll
-C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Naia.Connectors.pdb

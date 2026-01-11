@@ -14,11 +14,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "c:\\naia3\\src\\Naia.Domain\\Naia.Domain.csproj",
+      "projectUniqueName": "C:\\naia3\\src\\Naia.Domain\\Naia.Domain.csproj",
       "projectName": "Naia.Domain",
-      "projectPath": "c:\\naia3\\src\\Naia.Domain\\Naia.Domain.csproj",
+      "projectPath": "C:\\naia3\\src\\Naia.Domain\\Naia.Domain.csproj",
       "packagesPath": "C:\\Users\\thomas.schnoor\\.nuget\\packages\\",
-      "outputPath": "c:\\naia3\\src\\Naia.Domain\\obj\\",
+      "outputPath": "C:\\naia3\\src\\Naia.Domain\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"

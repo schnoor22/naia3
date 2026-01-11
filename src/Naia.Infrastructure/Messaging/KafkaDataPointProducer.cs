@@ -120,6 +120,42 @@ public sealed class KafkaDataPointProducer : IDataPointProducer, IAsyncDisposabl
         return await PublishAsync(batch, cancellationToken);
     }
     
+    public async Task<ProduceResult> PublishAsync(
+        string topic,
+        string key,
+        string jsonPayload,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var message = new Message<string, string>
+            {
+                Key = key,
+                Value = jsonPayload,
+                Headers = new Headers
+                {
+                    { "sent_at", System.Text.Encoding.UTF8.GetBytes(DateTime.UtcNow.ToString("O")) }
+                }
+            };
+            
+            var result = await _producer.ProduceAsync(topic, message, cancellationToken);
+            
+            _logger.LogDebug(
+                "Published message to {Topic}[{Partition}]@{Offset} with key {Key}",
+                result.Topic, result.Partition.Value, result.Offset.Value, key);
+            
+            return ProduceResult.Successful(
+                result.Topic,
+                result.Partition.Value,
+                result.Offset.Value);
+        }
+        catch (ProduceException<string, string> ex)
+        {
+            _logger.LogError(ex, "Failed to publish to {Topic} with key {Key}: {Reason}", topic, key, ex.Error.Reason);
+            return ProduceResult.Failed(topic, ex.Error.Reason);
+        }
+    }
+    
     public Task FlushAsync(CancellationToken cancellationToken = default)
     {
         _producer.Flush(TimeSpan.FromSeconds(10));
@@ -145,8 +181,11 @@ public sealed class KafkaOptions
     /// <summary>Kafka bootstrap servers (comma-separated)</summary>
     public string BootstrapServers { get; set; } = "localhost:9092";
     
-    /// <summary>Topic for data point batches</summary>
+    /// <summary>Topic for real-time data point batches</summary>
     public string DataPointsTopic { get; set; } = "naia.datapoints";
+    
+    /// <summary>Topic for backfill data point batches</summary>
+    public string BackfillTopic { get; set; } = "naia.datapoints.backfill";
     
     /// <summary>Dead letter queue topic for failed messages</summary>
     public string DlqTopic { get; set; } = "naia.datapoints.dlq";

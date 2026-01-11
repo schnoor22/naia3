@@ -1,20 +1,22 @@
+using Hangfire;
+using Hangfire.Console;
+using Hangfire.PostgreSql;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Naia.PatternEngine.Configuration;
-using Naia.PatternEngine.Services;
-using Naia.PatternEngine.Workers;
+using Naia.PatternEngine.Jobs;
 using StackExchange.Redis;
 
 namespace Naia.PatternEngine;
 
 /// <summary>
-/// Extension methods for registering the Pattern Flywheel services.
+/// Extension methods for registering the Pattern Flywheel services with Hangfire.
 /// </summary>
 public static class PatternEngineServiceExtensions
 {
     /// <summary>
-    /// Adds the Pattern Flywheel services to the service collection.
+    /// Adds the Pattern Flywheel services and Hangfire job scheduler to the service collection.
     /// </summary>
     public static IServiceCollection AddPatternEngine(
         this IServiceCollection services,
@@ -33,64 +35,148 @@ public static class PatternEngineServiceExtensions
             return services;
         }
 
-        // Register shared services
-        services.AddSingleton<IPatternEventPublisher>(sp =>
-        {
-            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<PatternEventPublisher>>();
-            return new PatternEventPublisher(logger, options.Kafka);
-        });
-
         // Get connection strings
         var postgresConnection = configuration.GetConnectionString("PostgreSQL") 
             ?? "Host=localhost;Database=naia;Username=naia;Password=naia";
         var questDbConnection = configuration.GetConnectionString("QuestDB")
             ?? "Host=localhost;Port=8812;Database=qdb;Username=admin;Password=quest";
-
-        // Register workers as hosted services
-        services.AddSingleton<IHostedService>(sp =>
+        
+        // QuestDB doesn't have PostgreSQL system catalogs - configure Npgsql compatibility mode
+        if (!questDbConnection.Contains("Server Compatibility Mode", StringComparison.OrdinalIgnoreCase))
         {
-            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<BehavioralAggregator>>();
-            var redis = sp.GetRequiredService<IConnectionMultiplexer>();
-            var publisher = sp.GetRequiredService<IPatternEventPublisher>();
-            var opts = Microsoft.Extensions.Options.Options.Create(options);
-            return new BehavioralAggregator(logger, opts, publisher, redis);
+            questDbConnection += ";Server Compatibility Mode=NoTypeLoading";
+        }
+
+        // Configure Hangfire with PostgreSQL storage
+        services.AddHangfire(config => config
+            .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+            .UseSimpleAssemblyNameTypeSerializer()
+            .UseRecommendedSerializerSettings()
+            .UsePostgreSqlStorage(c => c.UseNpgsqlConnection(postgresConnection))
+            .UseConsole());
+
+        // Configure Hangfire server with queues
+        services.AddHangfireServer(serverOptions =>
+        {
+            serverOptions.WorkerCount = options.Hangfire.WorkerCount;
+            serverOptions.Queues = new[] { "analysis", "matching", "learning", "maintenance", "default" };
         });
 
-        services.AddSingleton<IHostedService>(sp =>
+        // Register job implementations with their dependencies
+        services.AddScoped<IBehavioralAnalysisJob>(sp =>
         {
-            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CorrelationProcessor>>();
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<BehavioralAnalysisJob>>();
             var redis = sp.GetRequiredService<IConnectionMultiplexer>();
-            var publisher = sp.GetRequiredService<IPatternEventPublisher>();
             var opts = Microsoft.Extensions.Options.Options.Create(options);
-            return new CorrelationProcessor(logger, opts, publisher, redis, questDbConnection);
+            return new BehavioralAnalysisJob(logger, opts, redis, postgresConnection, questDbConnection);
         });
 
-        services.AddSingleton<IHostedService>(sp =>
+        services.AddScoped<ICorrelationAnalysisJob>(sp =>
         {
-            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ClusterDetectionWorker>>();
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CorrelationAnalysisJob>>();
             var redis = sp.GetRequiredService<IConnectionMultiplexer>();
-            var publisher = sp.GetRequiredService<IPatternEventPublisher>();
             var opts = Microsoft.Extensions.Options.Options.Create(options);
-            return new ClusterDetectionWorker(logger, opts, publisher, redis);
+            return new CorrelationAnalysisJob(logger, opts, redis, postgresConnection, questDbConnection);
         });
 
-        services.AddSingleton<IHostedService>(sp =>
+        services.AddScoped<IClusterDetectionJob>(sp =>
         {
-            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<PatternMatcherWorker>>();
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ClusterDetectionJob>>();
             var redis = sp.GetRequiredService<IConnectionMultiplexer>();
-            var publisher = sp.GetRequiredService<IPatternEventPublisher>();
             var opts = Microsoft.Extensions.Options.Options.Create(options);
-            return new PatternMatcherWorker(logger, opts, publisher, redis, postgresConnection);
+            return new ClusterDetectionJob(logger, opts, redis, postgresConnection);
         });
 
-        services.AddSingleton<IHostedService>(sp =>
+        services.AddScoped<IPatternMatchingJob>(sp =>
         {
-            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<PatternLearnerWorker>>();
-            var publisher = sp.GetRequiredService<IPatternEventPublisher>();
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<PatternMatchingJob>>();
+            var redis = sp.GetRequiredService<IConnectionMultiplexer>();
             var opts = Microsoft.Extensions.Options.Options.Create(options);
-            return new PatternLearnerWorker(logger, opts, publisher, postgresConnection);
+            return new PatternMatchingJob(logger, opts, redis, postgresConnection);
+        });
+
+        services.AddScoped<IPatternLearningJob>(sp =>
+        {
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<PatternLearningJob>>();
+            var opts = Microsoft.Extensions.Options.Options.Create(options);
+            return new PatternLearningJob(logger, opts, postgresConnection);
+        });
+
+        services.AddScoped<IMaintenanceJob>(sp =>
+        {
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<MaintenanceJob>>();
+            var redis = sp.GetRequiredService<IConnectionMultiplexer>();
+            var opts = Microsoft.Extensions.Options.Options.Create(options);
+            return new MaintenanceJob(logger, opts, redis, postgresConnection);
         });
 
         return services;
+    }
+
+    /// <summary>
+    /// Configures the Hangfire dashboard and schedules recurring pattern flywheel jobs.
+    /// Call this in Program.cs after app.Build().
+    /// </summary>
+    public static IApplicationBuilder UsePatternEngine(
+        this IApplicationBuilder app,
+        IConfiguration configuration)
+    {
+        var options = configuration
+            .GetSection(PatternFlywheelOptions.SectionName)
+            .Get<PatternFlywheelOptions>() ?? new PatternFlywheelOptions();
+
+        if (!options.Enabled)
+        {
+            return app;
+        }
+
+        // Configure Hangfire Dashboard
+        if (options.Hangfire.EnableDashboard)
+        {
+            app.UseHangfireDashboard(options.Hangfire.DashboardPath, new DashboardOptions
+            {
+                DashboardTitle = "NAIA Pattern Flywheel Jobs",
+                DisplayStorageConnectionString = false
+            });
+        }
+
+        // Schedule recurring jobs
+        RecurringJob.AddOrUpdate<IBehavioralAnalysisJob>(
+            "pattern-behavioral-analysis",
+            job => job.ExecuteAsync(null!, CancellationToken.None),
+            options.Hangfire.BehavioralAnalysisCron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        RecurringJob.AddOrUpdate<ICorrelationAnalysisJob>(
+            "pattern-correlation-analysis",
+            job => job.ExecuteAsync(null!, CancellationToken.None),
+            options.Hangfire.CorrelationAnalysisCron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        RecurringJob.AddOrUpdate<IClusterDetectionJob>(
+            "pattern-cluster-detection",
+            job => job.ExecuteAsync(null!, CancellationToken.None),
+            options.Hangfire.ClusterDetectionCron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        RecurringJob.AddOrUpdate<IPatternMatchingJob>(
+            "pattern-matching",
+            job => job.ExecuteAsync(null!, CancellationToken.None),
+            options.Hangfire.PatternMatchingCron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        RecurringJob.AddOrUpdate<IPatternLearningJob>(
+            "pattern-learning",
+            job => job.ExecuteAsync(null!, CancellationToken.None),
+            options.Hangfire.PatternLearningCron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        RecurringJob.AddOrUpdate<IMaintenanceJob>(
+            "pattern-maintenance",
+            job => job.ExecuteAsync(null!, CancellationToken.None),
+            options.Hangfire.MaintenanceCron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        return app;
     }
 }

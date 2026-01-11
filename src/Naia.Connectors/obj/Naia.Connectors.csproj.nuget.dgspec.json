@@ -54,6 +54,16 @@
       "frameworks": {
         "net8.0": {
           "targetAlias": "net8.0",
+          "dependencies": {
+            "Microsoft.Extensions.DependencyInjection.Abstractions": {
+              "target": "Package",
+              "version": "[8.0.2, )"
+            },
+            "Microsoft.Extensions.Hosting.Abstractions": {
+              "target": "Package",
+              "version": "[8.0.1, )"
+            }
+          },
           "imports": [
             "net461",
             "net462",
@@ -134,23 +144,31 @@
             },
             "Microsoft.Extensions.Hosting.Abstractions": {
               "target": "Package",
-              "version": "[8.0.0, )"
+              "version": "[8.0.1, )"
             },
             "Microsoft.Extensions.Http": {
               "target": "Package",
-              "version": "[8.0.0, )"
+              "version": "[8.0.1, )"
             },
             "Microsoft.Extensions.Logging.Abstractions": {
               "target": "Package",
-              "version": "[8.0.0, )"
+              "version": "[8.0.2, )"
             },
             "Microsoft.Extensions.Options": {
+              "target": "Package",
+              "version": "[8.0.2, )"
+            },
+            "Microsoft.Extensions.Options.DataAnnotations": {
               "target": "Package",
               "version": "[8.0.0, )"
             },
             "System.Text.Json": {
               "target": "Package",
               "version": "[8.0.5, )"
+            },
+            "System.Threading.Channels": {
+              "target": "Package",
+              "version": "[8.0.0, )"
             }
           },
           "imports": [

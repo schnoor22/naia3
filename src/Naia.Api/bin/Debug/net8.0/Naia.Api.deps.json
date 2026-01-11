@@ -9,9 +9,11 @@
       "Naia.Api/1.0.0": {
         "dependencies": {
           "Microsoft.AspNetCore.OpenApi": "8.0.22",
+          "Microsoft.AspNetCore.SignalR": "1.1.0",
           "Naia.Application": "1.0.0",
           "Naia.Connectors": "1.0.0",
           "Naia.Infrastructure": "1.0.0",
+          "Naia.PatternEngine": "1.0.0",
           "Swashbuckle.AspNetCore": "6.6.2"
         },
         "runtime": {
@@ -26,6 +28,118 @@
           "lib/net8.0/Confluent.Kafka.dll": {
             "assemblyVersion": "2.6.1.0",
             "fileVersion": "2.6.1.0"
+          }
+        }
+      },
+      "Dapper/2.0.123": {
+        "runtime": {
+          "lib/net5.0/Dapper.dll": {
+            "assemblyVersion": "2.0.0.0",
+            "fileVersion": "2.0.123.33578"
+          }
+        }
+      },
+      "Hangfire.AspNetCore/1.8.17": {
+        "dependencies": {
+          "Hangfire.NetCore": "1.8.17"
+        },
+        "runtime": {
+          "lib/netcoreapp3.0/Hangfire.AspNetCore.dll": {
+            "assemblyVersion": "1.8.17.0",
+            "fileVersion": "1.8.17.0"
+          }
+        }
+      },
+      "Hangfire.Console/1.4.3": {
+        "dependencies": {
+          "Hangfire.Core": "1.8.17"
+        },
+        "runtime": {
+          "lib/netstandard1.3/Hangfire.Console.dll": {
+            "assemblyVersion": "1.4.3.0",
+            "fileVersion": "1.4.3.0"
+          }
+        }
+      },
+      "Hangfire.Core/1.8.17": {
+        "dependencies": {
+          "Newtonsoft.Json": "11.0.2"
+        },
+        "runtime": {
+          "lib/netstandard2.0/Hangfire.Core.dll": {
+            "assemblyVersion": "1.8.17.0",
+            "fileVersion": "1.8.17.0"
+          }
+        },
+        "resources": {
+          "lib/netstandard2.0/ca/Hangfire.Core.resources.dll": {
+            "locale": "ca"
+          },
+          "lib/netstandard2.0/de/Hangfire.Core.resources.dll": {
+            "locale": "de"
+          },
+          "lib/netstandard2.0/es/Hangfire.Core.resources.dll": {
+            "locale": "es"
+          },
+          "lib/netstandard2.0/fa/Hangfire.Core.resources.dll": {
+            "locale": "fa"
+          },
+          "lib/netstandard2.0/fr/Hangfire.Core.resources.dll": {
+            "locale": "fr"
+          },
+          "lib/netstandard2.0/nb/Hangfire.Core.resources.dll": {
+            "locale": "nb"
+          },
+          "lib/netstandard2.0/nl/Hangfire.Core.resources.dll": {
+            "locale": "nl"
+          },
+          "lib/netstandard2.0/pt-BR/Hangfire.Core.resources.dll": {
+            "locale": "pt-BR"
+          },
+          "lib/netstandard2.0/pt-PT/Hangfire.Core.resources.dll": {
+            "locale": "pt-PT"
+          },
+          "lib/netstandard2.0/pt/Hangfire.Core.resources.dll": {
+            "locale": "pt"
+          },
+          "lib/netstandard2.0/sv/Hangfire.Core.resources.dll": {
+            "locale": "sv"
+          },
+          "lib/netstandard2.0/tr-TR/Hangfire.Core.resources.dll": {
+            "locale": "tr-TR"
+          },
+          "lib/netstandard2.0/zh-TW/Hangfire.Core.resources.dll": {
+            "locale": "zh-TW"
+          },
+          "lib/netstandard2.0/zh/Hangfire.Core.resources.dll": {
+            "locale": "zh"
+          }
+        }
+      },
+      "Hangfire.NetCore/1.8.17": {
+        "dependencies": {
+          "Hangfire.Core": "1.8.17",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Hosting.Abstractions": "8.0.1",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.2"
+        },
+        "runtime": {
+          "lib/netstandard2.1/Hangfire.NetCore.dll": {
+            "assemblyVersion": "1.8.17.0",
+            "fileVersion": "1.8.17.0"
+          }
+        }
+      },
+      "Hangfire.PostgreSql/1.20.10": {
+        "dependencies": {
+          "Dapper": "2.0.123",
+          "Hangfire.Core": "1.8.17",
+          "Npgsql": "8.0.6"
+        },
+        "runtime": {
+          "lib/netstandard2.0/Hangfire.PostgreSql.dll": {
+            "assemblyVersion": "1.20.10.0",
+            "fileVersion": "1.20.10.0"
           }
         }
       },
@@ -153,6 +267,20 @@
           }
         }
       },
+      "MathNet.Numerics/5.0.0": {
+        "runtime": {
+          "lib/net6.0/MathNet.Numerics.dll": {
+            "assemblyVersion": "5.0.0.0",
+            "fileVersion": "5.0.0.0"
+          }
+        }
+      },
+      "Microsoft.AspNetCore.Http.Connections/1.1.0": {
+        "dependencies": {
+          "Microsoft.AspNetCore.WebSockets": "2.2.0",
+          "Newtonsoft.Json": "11.0.2"
+        }
+      },
       "Microsoft.AspNetCore.OpenApi/8.0.22": {
         "dependencies": {
           "Microsoft.OpenApi": "1.6.14"
@@ -162,6 +290,18 @@
             "assemblyVersion": "8.0.22.0",
             "fileVersion": "8.0.2225.52808"
           }
+        }
+      },
+      "Microsoft.AspNetCore.SignalR/1.1.0": {
+        "dependencies": {
+          "Microsoft.AspNetCore.Http.Connections": "1.1.0"
+        }
+      },
+      "Microsoft.AspNetCore.WebSockets/2.2.0": {
+        "dependencies": {
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Options": "8.0.2",
+          "System.Net.WebSockets.WebSocketProtocol": "4.5.1"
         }
       },
       "Microsoft.EntityFrameworkCore/8.0.11": {
@@ -236,6 +376,57 @@
           }
         }
       },
+      "Microsoft.Extensions.Diagnostics/8.0.1": {
+        "dependencies": {
+          "Microsoft.Extensions.Diagnostics.Abstractions": "8.0.1"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Diagnostics.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.Diagnostics.Abstractions/8.0.1": {
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Options": "8.0.2"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Diagnostics.Abstractions.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.Hosting.Abstractions/8.0.1": {
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Diagnostics.Abstractions": "8.0.1",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.2"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Hosting.Abstractions.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.Http/8.0.1": {
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Diagnostics": "8.0.1",
+          "Microsoft.Extensions.Logging": "8.0.1",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Options": "8.0.2"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Http.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
       "Microsoft.Extensions.Logging/8.0.1": {
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection": "8.0.1",
@@ -284,6 +475,14 @@
           "lib/net8.0/net-questdb-client.dll": {
             "assemblyVersion": "1.0.0.0",
             "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "Newtonsoft.Json/11.0.2": {
+        "runtime": {
+          "lib/netstandard2.0/Newtonsoft.Json.dll": {
+            "assemblyVersion": "11.0.0.0",
+            "fileVersion": "11.0.2.21924"
           }
         }
       },
@@ -369,8 +568,18 @@
           }
         }
       },
+      "System.Net.WebSockets.WebSocketProtocol/4.5.1": {
+        "runtime": {
+          "lib/netcoreapp2.1/System.Net.WebSockets.WebSocketProtocol.dll": {
+            "assemblyVersion": "4.0.0.0",
+            "fileVersion": "4.6.26606.5"
+          }
+        }
+      },
       "Naia.Application/1.0.0": {
         "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Hosting.Abstractions": "8.0.1",
           "Naia.Domain": "1.0.0"
         },
         "runtime": {
@@ -383,6 +592,8 @@
       "Naia.Connectors/1.0.0": {
         "dependencies": {
           "Confluent.Kafka": "2.6.1",
+          "Microsoft.Extensions.Hosting.Abstractions": "8.0.1",
+          "Microsoft.Extensions.Http": "8.0.1",
           "Microsoft.Extensions.Logging.Abstractions": "8.0.2",
           "Microsoft.Extensions.Options": "8.0.2",
           "Naia.Application": "1.0.0",
@@ -419,6 +630,30 @@
             "fileVersion": "1.0.0.0"
           }
         }
+      },
+      "Naia.PatternEngine/1.0.0": {
+        "dependencies": {
+          "Hangfire.AspNetCore": "1.8.17",
+          "Hangfire.Console": "1.4.3",
+          "Hangfire.Core": "1.8.17",
+          "Hangfire.PostgreSql": "1.20.10",
+          "MathNet.Numerics": "5.0.0",
+          "Microsoft.EntityFrameworkCore": "8.0.11",
+          "Microsoft.Extensions.Configuration.Binder": "8.0.2",
+          "Microsoft.Extensions.Hosting.Abstractions": "8.0.1",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Options": "8.0.2",
+          "Naia.Domain": "1.0.0",
+          "Npgsql": "8.0.6",
+          "Npgsql.EntityFrameworkCore.PostgreSQL": "8.0.11",
+          "StackExchange.Redis": "2.8.16"
+        },
+        "runtime": {
+          "Naia.PatternEngine.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
       }
     }
   },
@@ -435,6 +670,48 @@
       "path": "confluent.kafka/2.6.1",
       "hashPath": "confluent.kafka.2.6.1.nupkg.sha512"
     },
+    "Dapper/2.0.123": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-RDFF4rBLLmbpi6pwkY7q/M6UXHRJEOerplDGE5jwEkP/JGJnBauAClYavNKJPW1yOTWRPIyfj4is3EaJxQXILQ==",
+      "path": "dapper/2.0.123",
+      "hashPath": "dapper.2.0.123.nupkg.sha512"
+    },
+    "Hangfire.AspNetCore/1.8.17": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-6sFVmIySXX4n8GDrXYRxlXdFzsF6H+q5WPeDDBIQ2qiGDIEzMQvO8P01s3Kq9rRL3YwPuwjhrVcLI6c+ESIVig==",
+      "path": "hangfire.aspnetcore/1.8.17",
+      "hashPath": "hangfire.aspnetcore.1.8.17.nupkg.sha512"
+    },
+    "Hangfire.Console/1.4.3": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-X/s63TB/+Vz6kuXfExoLvbm7pH+oYW45qrboqSNS2ASPz6yko0Yl7114gKPgF4ELQQ1dwztlfOVioDsxsnsxbg==",
+      "path": "hangfire.console/1.4.3",
+      "hashPath": "hangfire.console.1.4.3.nupkg.sha512"
+    },
+    "Hangfire.Core/1.8.17": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-PJbESth45US95kcFn3P2xd//l5C34YPskcU9q/mdIutVcYbd2kvsZDBFmz0/HYxa0nrocdjSpO6MGwPU4kE8Pw==",
+      "path": "hangfire.core/1.8.17",
+      "hashPath": "hangfire.core.1.8.17.nupkg.sha512"
+    },
+    "Hangfire.NetCore/1.8.17": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-COFpdp1JOMj9gd76NObq0ejZv0UAfpa6d3uKdtc96+NT/PhjXVOT5im2Mff3jqBdwEcQodw2xS8oFUs863clvw==",
+      "path": "hangfire.netcore/1.8.17",
+      "hashPath": "hangfire.netcore.1.8.17.nupkg.sha512"
+    },
+    "Hangfire.PostgreSql/1.20.10": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-Nn/88KoBvmy/xyopC9s+lXkwxQ6VB+RKyM8tjX3EgfSARDFxl2sEsFu0lw7WrjFdosg+E3naGzM5MzyiiL5i6w==",
+      "path": "hangfire.postgresql/1.20.10",
+      "hashPath": "hangfire.postgresql.1.20.10.nupkg.sha512"
+    },
     "librdkafka.redist/2.6.1": {
       "type": "package",
       "serviceable": true,
@@ -442,12 +719,40 @@
       "path": "librdkafka.redist/2.6.1",
       "hashPath": "librdkafka.redist.2.6.1.nupkg.sha512"
     },
+    "MathNet.Numerics/5.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-pg1W2VwaEQMAiTpGK840hZgzavnqjlCMTVSbtVCXVyT+7AX4mc1o89SPv4TBlAjhgCOo9c1Y+jZ5m3ti2YgGgA==",
+      "path": "mathnet.numerics/5.0.0",
+      "hashPath": "mathnet.numerics.5.0.0.nupkg.sha512"
+    },
+    "Microsoft.AspNetCore.Http.Connections/1.1.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-ZcwAM9rE5yjGC+vtiNAK0INybpKIqnvB+/rntZn2/CPtyiBAtovVrEp4UZOoC31zH5t0P78ix9gLNJzII/ODsA==",
+      "path": "microsoft.aspnetcore.http.connections/1.1.0",
+      "hashPath": "microsoft.aspnetcore.http.connections.1.1.0.nupkg.sha512"
+    },
     "Microsoft.AspNetCore.OpenApi/8.0.22": {
       "type": "package",
       "serviceable": true,
       "sha512": "sha512-NljWP+NNJDu3Uls1OxiIrhOnhRTCdpJNLukJFMrBIPU1FyencrBFpgHiUuv/K5TqDPE7iKaZVreDSHSVhk4QrA==",
       "path": "microsoft.aspnetcore.openapi/8.0.22",
       "hashPath": "microsoft.aspnetcore.openapi.8.0.22.nupkg.sha512"
+    },
+    "Microsoft.AspNetCore.SignalR/1.1.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-V5X5XkeAHaFyyBOGPrddVeqTNo6zRPJNS5PRhlzEyBXiNG9AtqUbMyWFdZahQyMiIWJau550z59A4kdC9g5I9A==",
+      "path": "microsoft.aspnetcore.signalr/1.1.0",
+      "hashPath": "microsoft.aspnetcore.signalr.1.1.0.nupkg.sha512"
+    },
+    "Microsoft.AspNetCore.WebSockets/2.2.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-ZpOcg2V0rCwU9ErfDb9y3Hcjoe7rU42XlmUS0mO4pVZQSgJVqR+DfyZtYd5LDa11F7bFNS2eezI9cBM3CmfGhw==",
+      "path": "microsoft.aspnetcore.websockets/2.2.0",
+      "hashPath": "microsoft.aspnetcore.websockets.2.2.0.nupkg.sha512"
     },
     "Microsoft.EntityFrameworkCore/8.0.11": {
       "type": "package",
@@ -498,6 +803,34 @@
       "path": "microsoft.extensions.dependencyinjection.abstractions/8.0.2",
       "hashPath": "microsoft.extensions.dependencyinjection.abstractions.8.0.2.nupkg.sha512"
     },
+    "Microsoft.Extensions.Diagnostics/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-doVPCUUCY7c6LhBsEfiy3W1bvS7Mi6LkfQMS8nlC22jZWNxBv8VO8bdfeyvpYFst6Kxqk7HBC6lytmEoBssvSQ==",
+      "path": "microsoft.extensions.diagnostics/8.0.1",
+      "hashPath": "microsoft.extensions.diagnostics.8.0.1.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Diagnostics.Abstractions/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-elH2vmwNmsXuKmUeMQ4YW9ldXiF+gSGDgg1vORksob5POnpaI6caj1Hu8zaYbEuibhqCoWg0YRWDazBY3zjBfg==",
+      "path": "microsoft.extensions.diagnostics.abstractions/8.0.1",
+      "hashPath": "microsoft.extensions.diagnostics.abstractions.8.0.1.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Hosting.Abstractions/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-nHwq9aPBdBPYXPti6wYEEfgXddfBrYC+CQLn+qISiwQq5tpfaqDZSKOJNxoe9rfQxGf1c+2wC/qWFe1QYJPYqw==",
+      "path": "microsoft.extensions.hosting.abstractions/8.0.1",
+      "hashPath": "microsoft.extensions.hosting.abstractions.8.0.1.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Http/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-kDYeKJUzh0qeg/AI+nSr3ffthmXYQTEb0nS9qRC7YhSbbuN4M4NPbaB77AJwtkTnCV9XZ7qYj3dkZaNcyl73EA==",
+      "path": "microsoft.extensions.http/8.0.1",
+      "hashPath": "microsoft.extensions.http.8.0.1.nupkg.sha512"
+    },
     "Microsoft.Extensions.Logging/8.0.1": {
       "type": "package",
       "serviceable": true,
@@ -532,6 +865,13 @@
       "sha512": "sha512-UwsnVCGkV95dXHf67QkqgSC1Yp7leG2cDutqhwquwY5NEvpaVIWW3q0TSZnBksifS/9xSxWak278shlNDiWakg==",
       "path": "net-questdb-client/2.1.0",
       "hashPath": "net-questdb-client.2.1.0.nupkg.sha512"
+    },
+    "Newtonsoft.Json/11.0.2": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-IvJe1pj7JHEsP8B8J8DwlMEx8UInrs/x+9oVY+oCD13jpLu4JbJU2WCIsMRn5C4yW9+DgkaO8uiVE5VHKjpmdQ==",
+      "path": "newtonsoft.json/11.0.2",
+      "hashPath": "newtonsoft.json.11.0.2.nupkg.sha512"
     },
     "Npgsql/8.0.6": {
       "type": "package",
@@ -589,6 +929,13 @@
       "path": "swashbuckle.aspnetcore.swaggerui/6.6.2",
       "hashPath": "swashbuckle.aspnetcore.swaggerui.6.6.2.nupkg.sha512"
     },
+    "System.Net.WebSockets.WebSocketProtocol/4.5.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-FquLjdb/0CeMqb15u9Px6TwnyFl306WztKWu6sKKc5kWPYMdpi5BFEkdxzGoieYFp9UksyGwJnCw4KKAUfJjrw==",
+      "path": "system.net.websockets.websocketprotocol/4.5.1",
+      "hashPath": "system.net.websockets.websocketprotocol.4.5.1.nupkg.sha512"
+    },
     "Naia.Application/1.0.0": {
       "type": "project",
       "serviceable": false,
@@ -605,6 +952,11 @@
       "sha512": ""
     },
     "Naia.Infrastructure/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "Naia.PatternEngine/1.0.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

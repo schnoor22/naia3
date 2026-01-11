@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Naia.Ingestion")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9297f818a9c24f0b0223c5e54675a4250f2384d1")]
 [assembly: System.Reflection.AssemblyProductAttribute("Naia.Ingestion")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Naia.Ingestion")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

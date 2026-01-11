@@ -82,6 +82,9 @@ public enum DataSourceType
     /// <summary>OSIsoft PI Web API</summary>
     PiWebApi = 2,
     
+    /// <summary>OSIsoft PI AF SDK (direct connection)</summary>
+    PiAfSdk = 10,
+    
     /// <summary>Modbus TCP/RTU</summary>
     Modbus = 3,
     

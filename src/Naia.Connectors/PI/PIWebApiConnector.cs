@@ -278,6 +278,8 @@ public sealed class PIWebApiConnector : ICurrentValueConnector, IHistoricalDataC
         var webIdMap = new Dictionary<string, string>(); // WebId -> SourceAddress
         var webIds = new List<(string webId, string address)>();
         
+        _logger.LogDebug("Reading current values for {Count} points", addressList.Count);
+        
         foreach (var address in addressList)
         {
             try
@@ -287,37 +289,71 @@ public sealed class PIWebApiConnector : ICurrentValueConnector, IHistoricalDataC
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to resolve WebId for {Address}", address);
+                _logger.LogDebug(ex, "Could not resolve WebId for {Address} (point may not exist in PI)", address);
             }
         }
+        
+        _logger.LogDebug("Successfully resolved {Count} WebIds out of {Total} addresses", webIds.Count, addressList.Count);
         
         if (webIds.Count == 0)
             return results;
         
         // Use individual /streams/{webId}/value calls to avoid URL length limits
+        int successCount = 0;
+        int failureCount = 0;
         foreach (var (webId, address) in webIds)
         {
             await _throttle.WaitAsync(ct);
             try
             {
-                var response = await _httpClient.GetFromJsonAsync<PIStreamValue>(
-                    $"{_baseUrl}/streams/{webId}/value", ct);
+                var url = $"{_baseUrl}/streams/{webId}/value";
                 
-                if (response?.Value != null)
+                // First get raw response to see what PI is actually returning
+                var rawResponse = await _httpClient.GetAsync(url, ct);
+                var content = await rawResponse.Content.ReadAsStringAsync(ct);
+                
+                if (failureCount == 0 && successCount == 0)
                 {
-                    results[address] = MapToDataValue(response.Value);
+                    // Log first response to understand format
+                    _logger.LogWarning("Sample PI /streams response for {Address}: {Content}", address, content.Substring(0, Math.Min(300, content.Length)));
                 }
+                
+                // PI /streams/{webId}/value returns PITimedValue directly, not wrapped in PIStreamValue
+                var timedValue = System.Text.Json.JsonSerializer.Deserialize<PITimedValue>(content, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                
+                if (timedValue != null)
+                {
+                    results[address] = MapToDataValue(timedValue);
+                    successCount++;
+                }
+                else
+                {
+                    _logger.LogDebug("No value returned from PI for {Address} at URL {Url}", address, url);
+                    failureCount++;
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(ex, "HTTP error reading {Address}: {StatusCode}", address, ex.StatusCode);
+                failureCount++;
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "JSON parse error for {Address} - response format may be incompatible", address);
+                failureCount++;
             }
             catch (Exception ex)
             {
-                // Log at Trace level to reduce noise - many points return incompatible formats
-                _logger.LogTrace(ex, "Failed to read current value for {Address}", address);
+                _logger.LogWarning(ex, "Unexpected error reading current value for {Address}", address);
+                failureCount++;
             }
             finally
             {
                 _throttle.Release();
             }
         }
+        
+        _logger.LogDebug("Read values complete: {Success} succeeded, {Failure} failed", successCount, failureCount);
         
         return results;
     }
@@ -610,19 +646,44 @@ public sealed class PIWebApiConnector : ICurrentValueConnector, IHistoricalDataC
             // Try searching instead
         }
         
-        // Fall back to search
+        // Fall back to search - use wildcard search for better matching with spaces
         if (!string.IsNullOrEmpty(_dataServerWebId))
         {
-            var searchUrl = $"{_baseUrl}/dataservers/{_dataServerWebId}/points?nameFilter={Uri.EscapeDataString(sourceAddress)}&maxCount=1";
+            var searchUrl = $"{_baseUrl}/dataservers/{_dataServerWebId}/points?nameFilter={Uri.EscapeDataString(sourceAddress)}&maxCount=10";
             var searchResponse = await _httpClient.GetFromJsonAsync<PIWebApiItemsResponse<PIPoint>>(searchUrl, ct);
             
+            _logger.LogDebug("Search for '{Address}' returned {Count} results", sourceAddress, searchResponse?.Items?.Count ?? 0);
+            
+            // Try exact match first (case-insensitive)
             var point = searchResponse?.Items?.FirstOrDefault(p => 
                 p.Name?.Equals(sourceAddress, StringComparison.OrdinalIgnoreCase) == true);
             
+            // If no exact match, try partial match (substring anywhere in name)
+            if (point == null && searchResponse?.Items?.Count > 0)
+            {
+                point = searchResponse.Items.FirstOrDefault(p =>
+                    p.Name?.IndexOf(sourceAddress, StringComparison.OrdinalIgnoreCase) >= 0);
+            }
+            
             if (point?.WebId != null)
             {
+                _logger.LogDebug("Found point '{PointName}' for search '{Address}'", point.Name, sourceAddress);
                 _webIdCache[normalizedAddress] = point.WebId;
                 return point.WebId;
+            }
+            
+            // Log what we found for debugging
+            if (searchResponse?.Items?.Count > 0)
+            {
+                _logger.LogDebug(
+                    "Search found {Count} points for '{Address}' but none matched: {Names}",
+                    searchResponse.Items.Count,
+                    sourceAddress,
+                    string.Join(", ", searchResponse.Items.Select(p => $"'{p.Name}'")));
+            }
+            else
+            {
+                _logger.LogDebug("Search for '{Address}' returned no results from nameFilter", sourceAddress);
             }
         }
         

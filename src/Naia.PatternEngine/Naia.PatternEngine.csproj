@@ -5,17 +5,20 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>Naia.PatternEngine</RootNamespace>
-    <Description>NAIA Pattern Flywheel - Event-driven pattern learning and matching engine</Description>
+    <Description>NAIA Pattern Flywheel - Hangfire-based pattern learning and matching engine</Description>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Kafka -->
-    <PackageReference Include="Confluent.Kafka" Version="2.3.0" />
+    <!-- Hangfire for background job scheduling (v1 approach - reliable and observable) -->
+    <PackageReference Include="Hangfire.Core" Version="1.8.17" />
+    <PackageReference Include="Hangfire.AspNetCore" Version="1.8.17" />
+    <PackageReference Include="Hangfire.PostgreSql" Version="1.20.10" />
+    <PackageReference Include="Hangfire.Console" Version="1.4.3" />
     
     <!-- Redis for correlation cache and behavioral stats -->
     <PackageReference Include="StackExchange.Redis" Version="2.7.27" />
     
-    <!-- QuestDB for time-series queries -->
+    <!-- QuestDB for time-series queries (historian-level analysis) -->
     <PackageReference Include="Npgsql" Version="8.0.5" />
     
     <!-- PostgreSQL for pattern storage -->

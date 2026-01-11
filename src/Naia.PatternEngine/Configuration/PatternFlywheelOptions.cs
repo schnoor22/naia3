@@ -11,8 +11,8 @@ public sealed class PatternFlywheelOptions
     /// <summary>Enable/disable the pattern flywheel</summary>
     public bool Enabled { get; set; } = true;
     
-    /// <summary>Kafka configuration</summary>
-    public PatternKafkaOptions Kafka { get; set; } = new();
+    /// <summary>Hangfire job scheduling settings</summary>
+    public HangfireOptions Hangfire { get; set; } = new();
     
     /// <summary>Behavioral aggregation settings</summary>
     public BehavioralAggregatorOptions BehavioralAggregator { get; set; } = new();
@@ -28,39 +28,51 @@ public sealed class PatternFlywheelOptions
     
     /// <summary>Pattern learning settings</summary>
     public PatternLearningOptions PatternLearning { get; set; } = new();
+    
+    /// <summary>Maintenance job settings</summary>
+    public MaintenanceOptions? Maintenance { get; set; } = new();
 }
 
 /// <summary>
-/// Kafka-specific configuration for pattern flywheel
+/// Hangfire job scheduling configuration
 /// </summary>
-public sealed class PatternKafkaOptions
+public sealed class HangfireOptions
 {
-    /// <summary>Kafka bootstrap servers</summary>
-    public string BootstrapServers { get; set; } = "localhost:9092";
+    /// <summary>Enable Hangfire dashboard</summary>
+    public bool EnableDashboard { get; set; } = true;
     
-    /// <summary>Consumer group for behavioral aggregator</summary>
-    public string BehavioralAggregatorGroupId { get; set; } = "naia-behavioral-aggregator";
+    /// <summary>Dashboard path (e.g., "/hangfire")</summary>
+    public string DashboardPath { get; set; } = "/hangfire";
     
-    /// <summary>Consumer group for correlation processor</summary>
-    public string CorrelationProcessorGroupId { get; set; } = "naia-correlation-processor";
+    /// <summary>Worker count for job processing</summary>
+    public int WorkerCount { get; set; } = 5;
     
-    /// <summary>Consumer group for cluster detection</summary>
-    public string ClusterDetectionGroupId { get; set; } = "naia-cluster-detection";
+    /// <summary>CRON schedule for behavioral analysis job (default: every 5 minutes)</summary>
+    public string BehavioralAnalysisCron { get; set; } = "*/5 * * * *";
     
-    /// <summary>Consumer group for pattern matcher</summary>
-    public string PatternMatcherGroupId { get; set; } = "naia-pattern-matcher";
+    /// <summary>CRON schedule for correlation analysis job (default: every 15 minutes)</summary>
+    public string CorrelationAnalysisCron { get; set; } = "*/15 * * * *";
     
-    /// <summary>Consumer group for pattern learner</summary>
-    public string PatternLearnerGroupId { get; set; } = "naia-pattern-learner";
+    /// <summary>CRON schedule for cluster detection job (default: every 15 minutes, offset by 5)</summary>
+    public string ClusterDetectionCron { get; set; } = "5/15 * * * *";
     
-    // Topic names
-    public string DataPointsTopic { get; set; } = "naia.datapoints";
-    public string PointsBehaviorTopic { get; set; } = "naia.points.behavior";
-    public string CorrelationsUpdatedTopic { get; set; } = "naia.correlations.updated";
-    public string ClustersCreatedTopic { get; set; } = "naia.clusters.created";
-    public string SuggestionsCreatedTopic { get; set; } = "naia.suggestions.created";
-    public string PatternsFeedbackTopic { get; set; } = "naia.patterns.feedback";
-    public string PatternsUpdatedTopic { get; set; } = "naia.patterns.updated";
+    /// <summary>CRON schedule for pattern matching job (default: every 15 minutes, offset by 10)</summary>
+    public string PatternMatchingCron { get; set; } = "10/15 * * * *";
+    
+    /// <summary>CRON schedule for pattern learning job (default: hourly)</summary>
+    public string PatternLearningCron { get; set; } = "0 * * * *";
+    
+    /// <summary>CRON schedule for maintenance job (default: daily at 3 AM)</summary>
+    public string MaintenanceCron { get; set; } = "0 3 * * *";
+}
+
+/// <summary>
+/// Maintenance job settings
+/// </summary>
+public sealed class MaintenanceOptions
+{
+    /// <summary>Retention period in days for old data</summary>
+    public int RetentionDays { get; set; } = 90;
 }
 
 /// <summary>
@@ -68,23 +80,17 @@ public sealed class PatternKafkaOptions
 /// </summary>
 public sealed class BehavioralAggregatorOptions
 {
-    /// <summary>Minimum samples needed before publishing behavior event</summary>
+    /// <summary>Minimum samples needed before calculating behavior</summary>
     public int MinSamplesForBehavior { get; set; } = 50;
     
     /// <summary>Window size for behavioral analysis (hours)</summary>
-    public int WindowSizeHours { get; set; } = 24;
+    public int WindowHours { get; set; } = 24;
     
-    /// <summary>How often to publish aggregated behavior (seconds)</summary>
-    public int PublishIntervalSeconds { get; set; } = 60;
+    /// <summary>Batch size for processing points</summary>
+    public int BatchSize { get; set; } = 100;
     
-    /// <summary>Maximum points to track in memory</summary>
-    public int MaxPointsInMemory { get; set; } = 100000;
-    
-    /// <summary>Redis key prefix for behavioral stats</summary>
-    public string RedisKeyPrefix { get; set; } = "naia:behavior:";
-    
-    /// <summary>TTL for Redis behavioral stats (hours)</summary>
-    public int RedisTtlHours { get; set; } = 48;
+    /// <summary>TTL for Redis behavioral stats cache (hours)</summary>
+    public int CacheTtlHours { get; set; } = 48;
 }
 
 /// <summary>
@@ -93,25 +99,16 @@ public sealed class BehavioralAggregatorOptions
 public sealed class CorrelationProcessorOptions
 {
     /// <summary>Minimum correlation to consider significant</summary>
-    public double MinCorrelationThreshold { get; set; } = 0.60;
-    
-    /// <summary>Change threshold to trigger publish (e.g., 0.10 = 10% change)</summary>
-    public double ChangeThresholdForPublish { get; set; } = 0.10;
-    
-    /// <summary>Maximum correlation pairs to calculate per batch</summary>
-    public int MaxPairsPerBatch { get; set; } = 1000;
+    public double MinCorrelation { get; set; } = 0.60;
     
     /// <summary>Time window for correlation calculation (hours)</summary>
-    public int CorrelationWindowHours { get; set; } = 168; // 7 days
+    public int WindowHours { get; set; } = 168; // 7 days
     
     /// <summary>Minimum samples required per point for correlation</summary>
-    public int MinSamplesForCorrelation { get; set; } = 100;
-    
-    /// <summary>Redis key prefix for correlation cache</summary>
-    public string RedisKeyPrefix { get; set; } = "naia:corr:";
+    public int MinSamples { get; set; } = 100;
     
     /// <summary>TTL for Redis correlation cache (hours)</summary>
-    public int RedisTtlHours { get; set; } = 24;
+    public int CacheTtlHours { get; set; } = 24;
 }
 
 /// <summary>

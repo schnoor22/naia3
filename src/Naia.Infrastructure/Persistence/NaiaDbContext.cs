@@ -96,7 +96,7 @@ public class NaiaDbContext : DbContext
             
             entity.Property(e => e.PointSequenceId)
                 .HasColumnName("point_sequence_id")
-                .UseIdentityAlwaysColumn();
+                .ValueGeneratedOnAdd();
             
             entity.Property(e => e.Name)
                 .HasColumnName("name")
@@ -127,14 +127,12 @@ public class NaiaDbContext : DbContext
             
             entity.Property(e => e.IsEnabled)
                 .HasColumnName("is_enabled")
-                .IsRequired()
-                .HasDefaultValue(true);
+                .IsRequired();
             
             // Compression settings
             entity.Property(e => e.CompressionEnabled)
                 .HasColumnName("compression_enabled")
-                .IsRequired()
-                .HasDefaultValue(true);
+                .IsRequired();
             
             entity.Property(e => e.CompressionDeviation)
                 .HasColumnName("compression_deviation")
@@ -148,11 +146,17 @@ public class NaiaDbContext : DbContext
             
             // Exception settings
             entity.Property(e => e.ExceptionEnabled)
-                .HasColumnName("exception_enabled");
+                .HasColumnName("exception_enabled")
+                .IsRequired();
             
             entity.Property(e => e.ExceptionDeviation)
                 .HasColumnName("exception_deviation")
                 .HasPrecision(18, 6);
+            
+            // Alerting
+            entity.Property(e => e.AlertOnOutOfRange)
+                .HasColumnName("alert_on_out_of_range")
+                .IsRequired();
             
             // Scaling
             entity.Property(e => e.Zero)
@@ -165,6 +169,11 @@ public class NaiaDbContext : DbContext
             
             entity.Property(e => e.CreatedAt)
                 .HasColumnName("created_at")
+                .IsRequired()
+                .HasDefaultValueSql("now()");
+            
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnName("updated_at")
                 .IsRequired()
                 .HasDefaultValueSql("now()");
             

@@ -99,10 +99,23 @@ public sealed class KafkaDataPointConsumer : IDataPointConsumer, IDisposable
             })
             .Build();
         
-        _consumer.Subscribe(_options.DataPointsTopic);
+        // Subscribe to both real-time and backfill topics
+        var topics = new List<string> { _options.DataPointsTopic };
+        
+        // Add backfill topic only if configured AND if you plan to create it in Kafka
+        // For now, only subscribe to main topic to avoid "topic not found" errors
+        // To enable backfill, you must:
+        // 1. Create the topic: kafka-topics.sh --create --topic naia.datapoints.backfill
+        // 2. Uncomment the line below
+        // if (!string.IsNullOrEmpty(_options.BackfillTopic))
+        // {
+        //     topics.Add(_options.BackfillTopic);
+        // }
+        
+        _consumer.Subscribe(topics);
         _logger.LogInformation(
-            "Kafka consumer initialized: {Group} on {Topic}",
-            _options.ConsumerGroupId, _options.DataPointsTopic);
+            "Kafka consumer initialized: {Group} on topics: {Topics}",
+            _options.ConsumerGroupId, string.Join(", ", topics));
     }
     
     public async Task<ConsumeContext?> ConsumeAsync(

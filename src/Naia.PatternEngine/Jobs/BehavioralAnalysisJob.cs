@@ -141,51 +141,12 @@ public sealed class BehavioralAnalysisJob : IBehavioralAnalysisJob
         var results = new List<BehaviorResult>();
         var pointIdSeqs = points.Select(p => p.IdSeq).ToArray();
         
-        await using var conn = new NpgsqlConnection(_questDbConnectionString);
-        await conn.OpenAsync(cancellationToken);
-
         // Query QuestDB for time-series data over the analysis window
         var windowHours = _options.BehavioralAggregator.WindowHours;
         var minSamples = _options.BehavioralAggregator.MinSamplesForBehavior;
         
-        // Build point filter
-        var pointFilter = string.Join(",", pointIdSeqs);
-        
-        var sql = $@"
-            SELECT * FROM (
-                SELECT 
-                    point_id_seq,
-                    count(*) as sample_count,
-                    min(CAST(value AS DOUBLE)) as min_val,
-                    max(CAST(value AS DOUBLE)) as max_val,
-                    avg(CAST(value AS DOUBLE)) as avg_val,
-                    min(timestamp) as window_start,
-                    max(timestamp) as window_end
-                FROM datapoints
-                WHERE point_id_seq IN ({pointFilter})
-                  AND timestamp > dateadd('h', -{windowHours}, now())
-                GROUP BY point_id_seq
-            )
-            WHERE sample_count >= {minSamples}
-        ";
-
-        await using var cmd = new NpgsqlCommand(sql, conn);
-        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-
-        var summaryByPointSeq = new Dictionary<int, QuestDbSummary>();
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            var pointIdSeq = reader.GetInt32(0);
-            summaryByPointSeq[pointIdSeq] = new QuestDbSummary
-            {
-                SampleCount = reader.GetInt64(1),
-                MinValue = reader.GetDouble(2),
-                MaxValue = reader.GetDouble(3),
-                AvgValue = reader.GetDouble(4),
-                WindowStart = reader.GetDateTime(5),
-                WindowEnd = reader.GetDateTime(6)
-            };
-        }
+        // Get summary statistics for all points in batch (use dedicated connection)
+        var summaryByPointSeq = await GetPointSummariesAsync(pointIdSeqs, windowHours, minSamples, cancellationToken);
 
         // For points with sufficient data, calculate detailed stats
         foreach (var point in points)
@@ -193,91 +154,178 @@ public sealed class BehavioralAnalysisJob : IBehavioralAnalysisJob
             if (!summaryByPointSeq.TryGetValue(point.IdSeq, out var summary))
                 continue;
 
-            // Get detailed values for stddev calculation (sample if too many)
-            var values = await GetPointValuesAsync(conn, point.IdSeq, windowHours, cancellationToken);
-            if (values.Count < minSamples)
-                continue;
-
-            // Calculate statistics using MathNet.Numerics
-            var stats = new DescriptiveStatistics(values);
-            
-            // Calculate update rate from timestamps
-            var timestamps = await GetPointTimestampsAsync(conn, point.IdSeq, windowHours, cancellationToken);
-            var updateRateHz = CalculateUpdateRate(timestamps);
-
-            results.Add(new BehaviorResult
+            try
             {
-                PointId = point.Id,
-                PointIdSeq = point.IdSeq,
-                PointName = point.Name,
-                SampleCount = (int)summary.SampleCount,
-                WindowStart = summary.WindowStart,
-                WindowEnd = summary.WindowEnd,
-                MeanValue = stats.Mean,
-                StdDeviation = stats.StandardDeviation,
-                MinValue = summary.MinValue,
-                MaxValue = summary.MaxValue,
-                UpdateRateHz = updateRateHz,
-                CalculatedAt = DateTime.UtcNow
-            });
+                // Get detailed values for stddev calculation (each gets its own connection)
+                var values = await GetPointValuesAsync(point.IdSeq, windowHours, cancellationToken);
+                if (values.Count < minSamples)
+                    continue;
+
+                // Calculate statistics using MathNet.Numerics
+                var stats = new DescriptiveStatistics(values);
+                
+                // Calculate update rate from timestamps (separate connection)
+                var timestamps = await GetPointTimestampsAsync(point.IdSeq, windowHours, cancellationToken);
+                var updateRateHz = CalculateUpdateRate(timestamps);
+
+                results.Add(new BehaviorResult
+                {
+                    PointId = point.Id,
+                    PointIdSeq = point.IdSeq,
+                    PointName = point.Name,
+                    SampleCount = (int)summary.SampleCount,
+                    WindowStart = summary.WindowStart,
+                    WindowEnd = summary.WindowEnd,
+                    MeanValue = stats.Mean,
+                    StdDeviation = stats.StandardDeviation,
+                    MinValue = summary.MinValue,
+                    MaxValue = summary.MaxValue,
+                    UpdateRateHz = updateRateHz,
+                    CalculatedAt = DateTime.UtcNow
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Error processing point {PointName} ({PointId})", point.Name, point.IdSeq);
+            }
         }
 
         return results;
     }
 
+    private async Task<Dictionary<int, QuestDbSummary>> GetPointSummariesAsync(
+        int[] pointIdSeqs,
+        int windowHours,
+        int minSamples,
+        CancellationToken cancellationToken)
+    {
+        var summaryByPointSeq = new Dictionary<int, QuestDbSummary>();
+        
+        try
+        {
+            await using var conn = new NpgsqlConnection(_questDbConnectionString);
+            await conn.OpenAsync(cancellationToken);
+
+            // Build point filter
+            var pointFilter = string.Join(",", pointIdSeqs);
+            
+            var sql = $@"
+                SELECT * FROM (
+                    SELECT 
+                        point_id,
+                        count(*) as sample_count,
+                        min(CAST(value AS DOUBLE)) as min_val,
+                        max(CAST(value AS DOUBLE)) as max_val,
+                        avg(CAST(value AS DOUBLE)) as avg_val,
+                        min(timestamp) as window_start,
+                        max(timestamp) as window_end
+                    FROM point_data
+                    WHERE point_id IN ({pointFilter})
+                      AND timestamp > dateadd('h', -{windowHours}, now())
+                    GROUP BY point_id
+                )
+                WHERE sample_count >= {minSamples}
+            ";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var pointIdSeq = reader.GetInt32(0);
+                summaryByPointSeq[pointIdSeq] = new QuestDbSummary
+                {
+                    SampleCount = reader.GetInt64(1),
+                    MinValue = reader.GetDouble(2),
+                    MaxValue = reader.GetDouble(3),
+                    AvgValue = reader.GetDouble(4),
+                    WindowStart = reader.GetDateTime(5),
+                    WindowEnd = reader.GetDateTime(6)
+                };
+            }
+        }
+        catch (Npgsql.NpgsqlException ex) when (ex.Message.Contains("does not exist"))
+        {
+            // QuestDB table doesn't exist yet - waiting for first ingested data
+            _logger.LogDebug("QuestDB table 'point_data' does not exist yet");
+        }
+
+        return summaryByPointSeq;
+    }
+
     private async Task<List<double>> GetPointValuesAsync(
-        NpgsqlConnection conn,
         int pointIdSeq,
         int windowHours,
         CancellationToken cancellationToken)
     {
         var values = new List<double>();
         
-        // Sample up to 10000 values for stddev calculation
-        var sql = $@"
-            SELECT value
-            FROM datapoints
-            WHERE point_id_seq = {pointIdSeq}
-              AND timestamp > dateadd('h', -{windowHours}, now())
-            ORDER BY timestamp DESC
-            LIMIT 10000
-        ";
-
-        await using var cmd = new NpgsqlCommand(sql, conn);
-        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-
-        while (await reader.ReadAsync(cancellationToken))
+        try
         {
-            if (!reader.IsDBNull(0))
-                values.Add(reader.GetDouble(0));
+            // Use dedicated connection for this query
+            await using var conn = new NpgsqlConnection(_questDbConnectionString);
+            await conn.OpenAsync(cancellationToken);
+
+            // Sample up to 10000 values for stddev calculation
+            var sql = $@"
+                SELECT value
+                FROM point_data
+                WHERE point_id = {pointIdSeq}
+                  AND timestamp > dateadd('h', -{windowHours}, now())
+                ORDER BY timestamp DESC
+                LIMIT 10000
+            ";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (!reader.IsDBNull(0))
+                    values.Add(reader.GetDouble(0));
+            }
+        }
+        catch (Npgsql.NpgsqlException ex) when (ex.Message.Contains("does not exist"))
+        {
+            // Table doesn't exist yet, return empty list
         }
 
         return values;
     }
 
     private async Task<List<DateTime>> GetPointTimestampsAsync(
-        NpgsqlConnection conn,
         int pointIdSeq,
         int windowHours,
         CancellationToken cancellationToken)
     {
         var timestamps = new List<DateTime>();
         
-        var sql = $@"
-            SELECT timestamp
-            FROM datapoints
-            WHERE point_id_seq = {pointIdSeq}
-              AND timestamp > dateadd('h', -{windowHours}, now())
-            ORDER BY timestamp DESC
-            LIMIT 1000
-        ";
-
-        await using var cmd = new NpgsqlCommand(sql, conn);
-        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-
-        while (await reader.ReadAsync(cancellationToken))
+        try
         {
-            timestamps.Add(reader.GetDateTime(0));
+            // Use dedicated connection for this query
+            await using var conn = new NpgsqlConnection(_questDbConnectionString);
+            await conn.OpenAsync(cancellationToken);
+
+            var sql = $@"
+                SELECT timestamp
+                FROM point_data
+                WHERE point_id = {pointIdSeq}
+                  AND timestamp > dateadd('h', -{windowHours}, now())
+                ORDER BY timestamp DESC
+                LIMIT 1000
+            ";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                timestamps.Add(reader.GetDateTime(0));
+            }
+        }
+        catch (Npgsql.NpgsqlException ex) when (ex.Message.Contains("does not exist"))
+        {
+            // Table doesn't exist yet, return empty list
         }
 
         return timestamps;

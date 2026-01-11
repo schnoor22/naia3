@@ -493,3 +493,63 @@ public sealed class PISearchItem
     [JsonPropertyName("Links")]
     public Dictionary<string, string>? Links { get; set; }
 }
+
+/// <summary>
+/// PI Web API search/query response.
+/// </summary>
+public sealed class PIWebApiSearchResponse
+{
+    [JsonPropertyName("TotalHits")]
+    public int? TotalHits { get; set; }
+    
+    [JsonPropertyName("Items")]
+    public List<PISearchResult>? Items { get; set; }
+    
+    [JsonPropertyName("Errors")]
+    public List<PISearchError>? Errors { get; set; }
+    
+    [JsonPropertyName("Links")]
+    public PIWebApiResponseLinks? Links { get; set; }
+}
+
+/// <summary>
+/// A single search result from PI Web API search/query endpoint.
+/// </summary>
+public sealed class PISearchResult
+{
+    [JsonPropertyName("Name")]
+    public string? Name { get; set; }
+    
+    [JsonPropertyName("Description")]
+    public string? Description { get; set; }
+    
+    [JsonPropertyName("ItemType")]
+    public string? ItemType { get; set; }
+    
+    [JsonPropertyName("DataType")]
+    public string? DataType { get; set; }
+    
+    [JsonPropertyName("UoM")]
+    public string? UoM { get; set; }
+    
+    [JsonPropertyName("WebId")]
+    public string? WebId { get; set; }
+    
+    [JsonPropertyName("UniqueID")]
+    public string? UniqueID { get; set; }
+    
+    [JsonPropertyName("Score")]
+    public double? Score { get; set; }
+    
+    [JsonPropertyName("Links")]
+    public Dictionary<string, string>? Links { get; set; }
+}
+
+public sealed class PISearchError
+{
+    [JsonPropertyName("Message")]
+    public string? Message { get; set; }
+    
+    [JsonPropertyName("Status")]
+    public int Status { get; set; }
+}

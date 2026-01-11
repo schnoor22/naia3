@@ -46,6 +46,9 @@ public static class DependencyInjection
         // Pipeline
         services.AddScoped<IIngestionPipeline, IngestionPipeline>();
         
+        // Point lookup service (for pattern engine and connectors)
+        services.AddPointLookupService();
+        
         return services;
     }
     
@@ -57,7 +60,13 @@ public static class DependencyInjection
         IConfiguration configuration)
     {
         var baseConnectionString = configuration.GetConnectionString("PostgreSql")
-            ?? "Host=localhost;Database=naia;Username=naia;Password=naia_dev_password";
+            ?? "Host=localhost;Database=naia;Username=naia;Password=naia_dev_password;SslMode=Disable";
+        
+        // Log connection string for debugging (mask password)
+        var maskedCs = baseConnectionString.Contains("Password=") 
+            ? System.Text.RegularExpressions.Regex.Replace(baseConnectionString, @"Password=[^;]+", "Password=***")
+            : baseConnectionString;
+        Console.WriteLine($"[PostgreSQL] Connection string: {maskedCs}");
         
         // Suppress loading table list from PostgreSQL - this prevents enum type introspection
         // which fails because we don't define PostgreSQL enum types (we use string-based enums via EF Core)

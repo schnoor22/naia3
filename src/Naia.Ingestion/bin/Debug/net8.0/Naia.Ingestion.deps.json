@@ -435,7 +435,7 @@
           }
         }
       },
-      "Microsoft.Extensions.Http/8.0.0": {
+      "Microsoft.Extensions.Http/8.0.1": {
         "dependencies": {
           "Microsoft.Extensions.Configuration.Abstractions": "8.0.0",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
@@ -447,7 +447,7 @@
         "runtime": {
           "lib/net8.0/Microsoft.Extensions.Http.dll": {
             "assemblyVersion": "8.0.0.0",
-            "fileVersion": "8.0.23.53103"
+            "fileVersion": "8.0.1024.46610"
           }
         }
       },
@@ -578,6 +578,18 @@
           }
         }
       },
+      "Microsoft.Extensions.Options.DataAnnotations/8.0.0": {
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Options": "8.0.2"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Options.DataAnnotations.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.23.53103"
+          }
+        }
+      },
       "Microsoft.Extensions.Primitives/8.0.0": {
         "runtime": {
           "lib/net8.0/Microsoft.Extensions.Primitives.dll": {
@@ -674,6 +686,8 @@
       },
       "Naia.Application/1.0.0": {
         "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Hosting.Abstractions": "8.0.1",
           "Naia.Domain": "1.0.0"
         },
         "runtime": {
@@ -687,9 +701,10 @@
         "dependencies": {
           "Confluent.Kafka": "2.6.1",
           "Microsoft.Extensions.Hosting.Abstractions": "8.0.1",
-          "Microsoft.Extensions.Http": "8.0.0",
+          "Microsoft.Extensions.Http": "8.0.1",
           "Microsoft.Extensions.Logging.Abstractions": "8.0.2",
           "Microsoft.Extensions.Options": "8.0.2",
+          "Microsoft.Extensions.Options.DataAnnotations": "8.0.0",
           "Naia.Application": "1.0.0",
           "Naia.Domain": "1.0.0"
         },
@@ -902,12 +917,12 @@
       "path": "microsoft.extensions.hosting.abstractions/8.0.1",
       "hashPath": "microsoft.extensions.hosting.abstractions.8.0.1.nupkg.sha512"
     },
-    "Microsoft.Extensions.Http/8.0.0": {
+    "Microsoft.Extensions.Http/8.0.1": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-cWz4caHwvx0emoYe7NkHPxII/KkTI8R/LC9qdqJqnKv2poTJ4e2qqPGQqvRoQ5kaSA4FU5IV3qFAuLuOhoqULQ==",
-      "path": "microsoft.extensions.http/8.0.0",
-      "hashPath": "microsoft.extensions.http.8.0.0.nupkg.sha512"
+      "sha512": "sha512-kDYeKJUzh0qeg/AI+nSr3ffthmXYQTEb0nS9qRC7YhSbbuN4M4NPbaB77AJwtkTnCV9XZ7qYj3dkZaNcyl73EA==",
+      "path": "microsoft.extensions.http/8.0.1",
+      "hashPath": "microsoft.extensions.http.8.0.1.nupkg.sha512"
     },
     "Microsoft.Extensions.Logging/8.0.1": {
       "type": "package",
@@ -971,6 +986,13 @@
       "sha512": "sha512-0f4DMRqEd50zQh+UyJc+/HiBsZ3vhAQALgdkcQEalSH1L2isdC7Yj54M3cyo5e+BeO5fcBQ7Dxly8XiBBcvRgw==",
       "path": "microsoft.extensions.options.configurationextensions/8.0.0",
       "hashPath": "microsoft.extensions.options.configurationextensions.8.0.0.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Options.DataAnnotations/8.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-z6p6q/N/hiU19A9tK7pjhXHpiYArO4oIICipxUviBEIOiDIoKRO7k6qItvw7alKcLtfHZOWmspuSKpvIvH0N8w==",
+      "path": "microsoft.extensions.options.dataannotations/8.0.0",
+      "hashPath": "microsoft.extensions.options.dataannotations.8.0.0.nupkg.sha512"
     },
     "Microsoft.Extensions.Primitives/8.0.0": {
       "type": "package",

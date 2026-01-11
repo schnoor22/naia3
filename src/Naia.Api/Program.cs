@@ -54,9 +54,32 @@ builder.Services.AddSwaggerGen(c =>
     c.SwaggerDoc("v1", new() { Title = "NAIA API", Version = "v3.0" });
 });
 
+// Add CORS for UI development
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowUI", policy =>
+    {
+        policy.WithOrigins(
+                "http://localhost:5173",  // Vite dev server
+                "http://localhost:5052",  // Production
+                "http://localhost:5000",  // Legacy
+                "http://localhost:5001"   // Alternative
+            )
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials(); // Required for SignalR
+    });
+});
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
+app.UseCors("AllowUI");
+
+// Serve static files from wwwroot (for embedded SPA)
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -1361,6 +1384,9 @@ app.MapGet("/api/backfill/request/{requestId:guid}", (
 app.MapControllers();
 app.MapHub<PatternHub>("/hubs/patterns");
 
+// SPA fallback - must be after all API routes
+app.MapFallbackToFile("index.html");
+
 // =============================================================================
 // AUTO-INITIALIZE PIPELINE ON STARTUP
 // =============================================================================
@@ -1373,17 +1399,33 @@ using (var scope = app.Services.CreateAsyncScope())
         var pointRepo = sp.GetRequiredService<IPointRepository>();
         var existingPoints = await pointRepo.GetEnabledAsync();
         
-        // Only auto-setup if no points exist yet
-        if (!existingPoints.Any())
+        // ALWAYS rediscover on startup to avoid stale point issues
+        // TODO: In production, add proper point validation/health checks instead
+        if (false) // Force rediscovery - TEMPORARILY DISABLED
         {
             var ingestion = sp.GetRequiredService<PIDataIngestionService>();
             var logger = sp.GetRequiredService<ILogger<Program>>();
             
-            logger.LogInformation("Auto-initializing NAIA pipeline on startup (no points found)");
+            logger.LogInformation("Auto-initializing NAIA pipeline on startup (forced rediscovery)");
             
             var config = sp.GetRequiredService<IConfiguration>();
             var dataSourceRepo = sp.GetRequiredService<IDataSourceRepository>();
             var unitOfWork = sp.GetRequiredService<IUnitOfWork>();
+            
+            // Delete ALL existing points and data sources to avoid duplicates on rediscovery
+            // This ensures a clean slate for fresh auto-discovery
+            var allDataSources = await dataSourceRepo.GetAllAsync();
+            foreach (var ds in allDataSources)
+            {
+                var dsPoints = await pointRepo.GetByDataSourceIdAsync(ds.Id);
+                foreach (var pt in dsPoints)
+                {
+                    await pointRepo.DeleteAsync(pt.Id);
+                }
+                await dataSourceRepo.DeleteAsync(ds.Id);
+            }
+            await unitOfWork.SaveChangesAsync();
+            logger.LogInformation("Cleared all {Count} data sources and their points for fresh auto-discovery", allDataSources.Count);
             
             var filter = config["DefaultPointFilter"] ?? "*BESS*";
             var maxPoints = int.Parse(config["DefaultMaxPoints"] ?? "100");

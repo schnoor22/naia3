@@ -1,0 +1,72 @@
+# Build outputs
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+*.cache
+*.deps.json
+*.runtimeconfig.json
+*.staticwebassets.runtime.json
+
+# User-specific files
+*.user
+*.suo
+*.userprefs
+.vs/
+.vscode/
+*.swp
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+.nuget/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+
+# SvelteKit build output
+.svelte-kit/
+build/
+
+# Environment and secrets
+*.env
+*.env.local
+appsettings.Development.json
+app.config
+
+# Data and logs
+data/
+*.log
+*.txt
+
+# Test outputs
+test-results/
+coverage/
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker volumes (if committed)
+postgres_data/
+questdb_data/
+redis_data/
+
+# IDE
+.idea/
+*.iml
+
+# Backup files
+*.bak
+*.backup

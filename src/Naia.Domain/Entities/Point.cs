@@ -19,7 +19,7 @@ public sealed class Point
     /// BIGINT is far more efficient than GUID for time-series storage.
     /// This is assigned by the database on insert.
     /// </summary>
-    public long PointSequenceId { get; private set; }
+    public long? PointSequenceId { get; private set; }
     
     /// <summary>Human-readable unique name (e.g., "WTG001.ActivePower")</summary>
     public string Name { get; private set; } = string.Empty;
@@ -57,10 +57,14 @@ public sealed class Point
     public double Zero { get; private set; }
     public double Span { get; private set; }
     
+    // Alerting
+    public bool AlertOnOutOfRange { get; private set; }
+    
     // Metadata
     public bool IsEnabled { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime? LastValueAt { get; private set; }
+    public DateTime UpdatedAt { get; private set; }
     
     private Point() { } // EF Core
     
@@ -75,7 +79,8 @@ public sealed class Point
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("Point name is required", nameof(name));
-            
+        
+        var now = DateTime.UtcNow;
         return new Point
         {
             Id = Guid.NewGuid(),
@@ -94,8 +99,10 @@ public sealed class Point
             ExceptionDeviation = 0.1, // 0.1% default
             Zero = 0,
             Span = 100,
+            AlertOnOutOfRange = false,
             IsEnabled = true,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = now,
+            UpdatedAt = now
         };
     }
     

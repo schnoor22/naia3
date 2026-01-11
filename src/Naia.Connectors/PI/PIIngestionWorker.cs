@@ -1,8 +1,10 @@
 using System.Text.Json;
 using Confluent.Kafka;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Naia.Application.Abstractions;
 using Naia.Connectors.Abstractions;
 
 namespace Naia.Connectors.PI;
@@ -30,8 +32,10 @@ public sealed class PIIngestionWorker : BackgroundService
     private readonly IProducer<string, string> _producer;
     private readonly PIWebApiOptions _options;
     private readonly ILogger<PIIngestionWorker> _logger;
+    private readonly IPointLookupService _pointLookup;
     
     private readonly List<DiscoveredPoint> _monitoredPoints = new();
+    private readonly object _monitoredPointsLock = new();
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -40,22 +44,42 @@ public sealed class PIIngestionWorker : BackgroundService
     private long _messagesPublished;
     private long _errorCount;
     private DateTime _lastPollTime;
+    private DateTime _lastSyncTime;
+    private Timer? _syncTimer;
     
     public PIIngestionWorker(
         PIWebApiConnector connector,
         IProducer<string, string> producer,
         IOptions<PIWebApiOptions> options,
-        ILogger<PIIngestionWorker> logger)
+        ILogger<PIIngestionWorker> logger,
+        IPointLookupService pointLookup)
     {
         _connector = connector;
         _producer = producer;
         _options = options.Value;
         _logger = logger;
+        _pointLookup = pointLookup;
     }
     
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("PI Ingestion Worker starting...");
+        
+        // Check if auto-discovery is enabled
+        if (!_options.EnableAutoDiscovery)
+        {
+            _logger.LogInformation("Auto-discovery disabled. Worker will not discover points automatically.");
+            // Keep worker running but idle, waiting for manual discovery or shutdown
+            try
+            {
+                await Task.Delay(Timeout.Infinite, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogInformation("PI Ingestion Worker shutting down (cancellation requested).");
+            }
+            return;
+        }
         
         // Initialize the connector
         try
@@ -88,6 +112,13 @@ public sealed class PIIngestionWorker : BackgroundService
         _logger.LogInformation(
             "PI Ingestion Worker started. Monitoring {PointCount} points at {Interval}ms interval",
             _monitoredPoints.Count, _options.PollingIntervalMs);
+        
+        // Start periodic database sync (every 2 minutes)
+        _syncTimer = new Timer(
+            async _ => await SyncMonitoredPointsWithDatabaseAsync(stoppingToken),
+            null,
+            TimeSpan.FromMinutes(2),
+            TimeSpan.FromMinutes(2));
         
         // Main polling loop
         var pollInterval = TimeSpan.FromMilliseconds(_options.PollingIntervalMs);
@@ -199,8 +230,18 @@ public sealed class PIIngestionWorker : BackgroundService
     {
         _lastPollTime = DateTime.UtcNow;
         
-        // Get addresses in batches
-        var addresses = _monitoredPoints.Select(p => p.SourceAddress).ToList();
+        // Get addresses in batches (with lock to prevent concurrent modification)
+        List<string> addresses;
+        lock (_monitoredPointsLock)
+        {
+            addresses = _monitoredPoints.Select(p => p.SourceAddress).ToList();
+        }
+        
+        if (addresses.Count == 0)
+        {
+            _logger.LogWarning("No monitored points available for polling");
+            return;
+        }
         
         // Read current values
         var values = await _connector.ReadCurrentValuesAsync(addresses, ct);
@@ -208,34 +249,37 @@ public sealed class PIIngestionWorker : BackgroundService
         // Publish to Kafka
         var tasks = new List<Task>();
         
-        foreach (var (address, value) in values)
+        lock (_monitoredPointsLock)
         {
-            var point = _monitoredPoints.FirstOrDefault(p => p.SourceAddress == address);
-            if (point == null) continue;
-            
-            var message = new PIDataPointMessage
+            foreach (var (address, value) in values)
             {
-                SourceAddress = address,
-                PointName = point.Name,
-                Value = value.Value,
-                Timestamp = value.Timestamp,
-                Quality = value.Quality.ToString(),
-                Units = value.Units ?? point.EngineeringUnits,
-                DataSourceType = "PIWebApi",
-                DataArchive = _options.DataArchive,
-                IngestTimestamp = DateTime.UtcNow
-            };
-            
-            var json = JsonSerializer.Serialize(message, _jsonOptions);
-            
-            tasks.Add(_producer.ProduceAsync(
-                "naia.datapoints",
-                new Message<string, string>
+                var point = _monitoredPoints.FirstOrDefault(p => p.SourceAddress == address);
+                if (point == null) continue;
+                
+                var message = new PIDataPointMessage
                 {
-                    Key = address,
-                    Value = json
-                },
-                ct));
+                    SourceAddress = address,
+                    PointName = point.Name,
+                    Value = value.Value,
+                    Timestamp = value.Timestamp,
+                    Quality = value.Quality.ToString(),
+                    Units = value.Units ?? point.EngineeringUnits,
+                    DataSourceType = "PIWebApi",
+                    DataArchive = _options.DataArchive,
+                    IngestTimestamp = DateTime.UtcNow
+                };
+                
+                var json = JsonSerializer.Serialize(message, _jsonOptions);
+                
+                tasks.Add(_producer.ProduceAsync(
+                    "naia.datapoints",
+                    new Message<string, string>
+                    {
+                        Key = address,
+                        Value = json
+                    },
+                    ct));
+            }
         }
         
         await Task.WhenAll(tasks);
@@ -249,9 +293,62 @@ public sealed class PIIngestionWorker : BackgroundService
         }
     }
     
+    private async Task SyncMonitoredPointsWithDatabaseAsync(CancellationToken ct)
+    {
+        try
+        {
+            // Get snapshot of monitored points
+            List<DiscoveredPoint> pointsToCheck;
+            lock (_monitoredPointsLock)
+            {
+                pointsToCheck = _monitoredPoints.ToList();
+            }
+            
+            // Check each monitored point to see if it still exists in the database
+            List<DiscoveredPoint> toRemove = new();
+            
+            foreach (var monitoredPoint in pointsToCheck)
+            {
+                // Check if point still exists in cache by name lookup
+                var pointResult = await _pointLookup.GetByNameAsync(monitoredPoint.Name, ct);
+                
+                if (pointResult == null)
+                {
+                    toRemove.Add(monitoredPoint);
+                }
+            }
+            
+            // Remove deleted points
+            if (toRemove.Count > 0)
+            {
+                lock (_monitoredPointsLock)
+                {
+                    foreach (var point in toRemove)
+                    {
+                        _monitoredPoints.Remove(point);
+                        _logger.LogInformation("Removed point from monitoring: {Name} ({Address})", 
+                            point.Name, point.SourceAddress);
+                    }
+                }
+                
+                _logger.LogInformation(
+                    "Point sync complete: {Removed} removed, {Current} total monitored",
+                    toRemove.Count, _monitoredPoints.Count);
+            }
+            
+            _lastSyncTime = DateTime.UtcNow;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to sync monitored points with database");
+        }
+    }
+    
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("PI Ingestion Worker stopping...");
+        _syncTimer?.Change(Timeout.Infinite, 0);
+        _syncTimer?.Dispose();
         await base.StopAsync(cancellationToken);
         _producer.Flush(cancellationToken);
     }

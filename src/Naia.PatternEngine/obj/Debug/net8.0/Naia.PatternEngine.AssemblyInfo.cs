@@ -12,9 +12,9 @@ using System.Reflection;
 
 [assembly: System.Reflection.AssemblyCompanyAttribute("Naia.PatternEngine")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
-[assembly: System.Reflection.AssemblyDescriptionAttribute("NAIA Pattern Flywheel - Event-driven pattern learning and matching engine")]
+[assembly: System.Reflection.AssemblyDescriptionAttribute("NAIA Pattern Flywheel - Hangfire-based pattern learning and matching engine")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9297f818a9c24f0b0223c5e54675a4250f2384d1")]
 [assembly: System.Reflection.AssemblyProductAttribute("Naia.PatternEngine")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Naia.PatternEngine")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

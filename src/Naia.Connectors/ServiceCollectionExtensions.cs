@@ -2,12 +2,19 @@ using Confluent.Kafka;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Naia.Connectors.OpcSimulator;
 using Naia.Connectors.PI;
+using Naia.Connectors.Replay;
 
 namespace Naia.Connectors;
 
 /// <summary>
 /// Extension methods for registering NAIA connectors with dependency injection.
+/// 
+/// AVAILABLE CONNECTORS:
+/// - PI Web API: Real-time data from OSIsoft PI historian
+/// - Wind Farm Replay: Historical Kelmarsh wind farm data simulation
+/// - OPC UA Simulator: Simulated renewable energy assets (planned)
 /// </summary>
 public static class ServiceCollectionExtensions
 {
@@ -28,18 +35,27 @@ public static class ServiceCollectionExtensions
         
         services.AddSingleton<IValidateOptions<PIWebApiOptions>, PIWebApiOptionsValidator>();
         
-        // Register HttpClient with Windows auth support
+        // Register HttpClient with Windows auth and SSL bypass support
         services.AddHttpClient<PIWebApiConnector>(client =>
         {
             client.DefaultRequestHeaders.Add("Accept", "application/json");
         })
         .ConfigurePrimaryHttpMessageHandler(() =>
         {
-            return new HttpClientHandler
+            var handler = new HttpClientHandler
             {
-                UseDefaultCredentials = true, // Enable Windows auth
+                UseDefaultCredentials = true,
                 PreAuthenticate = true
             };
+            
+            // Bypass SSL certificate validation for self-signed certs
+            handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) =>
+            {
+                // Accept all certificates (development only!)
+                return true;
+            };
+            
+            return handler;
         });
         
         // Register the connector as singleton (maintains WebId cache)
@@ -91,12 +107,85 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        var piEnabled = configuration.GetValue<bool>("PIWebApi:Enabled", false);
+        // Ensure we have a shared Kafka producer (if not already registered)
+        services.AddSingleton<IProducer<string, string>>(sp =>
+        {
+            var kafkaConfig = new ProducerConfig
+            {
+                BootstrapServers = configuration["Kafka:BootstrapServers"] ?? "localhost:9092",
+                ClientId = "naia-connectors",
+                Acks = Acks.Leader,
+                EnableIdempotence = false,
+                LingerMs = 5,
+                BatchSize = 16384,
+                CompressionType = CompressionType.Lz4
+            };
+            
+            return new ProducerBuilder<string, string>(kafkaConfig).Build();
+        });
         
+        // PI Web API Connector
+        var piEnabled = configuration.GetValue<bool>("PIWebApi:Enabled", false);
         if (piEnabled)
         {
-            services.AddPIIngestionWorker(configuration);
+            services.AddPIWebApiConnector(configuration);
+            services.AddHostedService<PIIngestionWorker>();
         }
+        
+        // Wind Farm Replay Connector (Kelmarsh data)
+        var replayEnabled = configuration.GetValue<bool>("WindFarmReplay:Enabled", false);
+        if (replayEnabled)
+        {
+            services.AddWindFarmReplayConnector(configuration);
+        }
+        
+        // OPC UA Simulator Connector
+        var opcEnabled = configuration.GetValue<bool>("OpcSimulator:Enabled", false);
+        if (opcEnabled)
+        {
+            services.AddOpcSimulatorConnector(configuration);
+        }
+        
+        return services;
+    }
+    
+    /// <summary>
+    /// Adds Wind Farm Replay connector services.
+    /// Replays historical Kelmarsh wind turbine data through Kafka.
+    /// </summary>
+    public static IServiceCollection AddWindFarmReplayConnector(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // Register options
+        services.AddOptions<ReplayOptions>()
+            .Bind(configuration.GetSection(ReplayOptions.SectionName))
+            .ValidateDataAnnotations();
+        
+        // Register CSV reader
+        services.AddSingleton<KelmarshCsvReader>();
+        
+        // Register the replay worker
+        services.AddHostedService<WindFarmReplayWorker>();
+        
+        return services;
+    }
+    
+    /// <summary>
+    /// Adds OPC UA Simulator connector services.
+    /// Connects to the NAIA OPC UA Simulator for testing.
+    /// </summary>
+    public static IServiceCollection AddOpcSimulatorConnector(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // Register options
+        services.AddOptions<OpcSimulatorOptions>()
+            .Bind(configuration.GetSection(OpcSimulatorOptions.SectionName))
+            .ValidateDataAnnotations();
+        
+        // Register the OPC worker
+        services.AddHostedService<OpcSimulatorWorker>();
         
         return services;
     }

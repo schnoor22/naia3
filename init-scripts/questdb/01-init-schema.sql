@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS point_data (
 
 -- Performance tuning for high-volume writes
 ALTER TABLE point_data SET PARAM maxUncommittedRows = 250000;
-ALTER TABLE point_data SET PARAM o3MaxLag = 300s;  -- 5 min out-of-order tolerance
+ALTER TABLE point_data SET PARAM o3MaxLag = 3600s;  -- 1 hour out-of-order tolerance (for lagging data)
 
 -- ===========================================================================
 -- POINT_AGGREGATES - Hourly rollups

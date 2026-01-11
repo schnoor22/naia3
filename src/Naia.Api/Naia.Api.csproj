@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.22" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR" Version="1.1.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
 
@@ -15,6 +16,7 @@
     <ProjectReference Include="..\Naia.Application\Naia.Application.csproj" />
     <ProjectReference Include="..\Naia.Connectors\Naia.Connectors.csproj" />
     <ProjectReference Include="..\Naia.Infrastructure\Naia.Infrastructure.csproj" />
+    <ProjectReference Include="..\Naia.PatternEngine\Naia.PatternEngine.csproj" />
   </ItemGroup>
 
 </Project>

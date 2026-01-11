@@ -49,7 +49,7 @@ public class Worker : BackgroundService
         await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
         
         // Create a scope for the pipeline (it has scoped dependencies)
-        using var scope = _scopeFactory.CreateScope();
+        await using var scope = _scopeFactory.CreateAsyncScope();
         
         IIngestionPipeline? pipeline = null;
         
