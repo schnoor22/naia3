@@ -135,7 +135,7 @@ public sealed class PointRepository : IPointRepository
         }
     }
     
-    public async Task<IDictionary<string, long>> GetTagNameToSequenceIdMapAsync(
+    public async Task<IDictionary<string, long?>> GetTagNameToSequenceIdMapAsync(
         Guid dataSourceId,
         CancellationToken cancellationToken = default)
     {
@@ -145,6 +145,26 @@ public sealed class PointRepository : IPointRepository
                 p => p.Name,
                 p => p.PointSequenceId,
                 cancellationToken);
+    }
+    
+    public async Task<Point?> GetBySourceAddressAsync(
+        string sourceAddress,
+        CancellationToken cancellationToken = default)
+    {
+        return await _context.Points
+            .Include(p => p.DataSource)
+            .FirstOrDefaultAsync(p => p.SourceAddress == sourceAddress, cancellationToken);
+    }
+    
+    public async Task<IReadOnlyList<Point>> GetBySourceAddressesAsync(
+        IEnumerable<string> sourceAddresses,
+        CancellationToken cancellationToken = default)
+    {
+        var addressList = sourceAddresses.ToList();
+        return await _context.Points
+            .Include(p => p.DataSource)
+            .Where(p => p.SourceAddress != null && addressList.Contains(p.SourceAddress))
+            .ToListAsync(cancellationToken);
     }
 }
 

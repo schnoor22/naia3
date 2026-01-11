@@ -8,6 +8,7 @@ using Naia.Infrastructure.Messaging;
 using Naia.Infrastructure.Persistence;
 using Naia.Infrastructure.Pipeline;
 using Naia.Infrastructure.TimeSeries;
+using Npgsql;
 using StackExchange.Redis;
 
 namespace Naia.Infrastructure;
@@ -55,12 +56,20 @@ public static class DependencyInjection
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("PostgreSql")
+        var baseConnectionString = configuration.GetConnectionString("PostgreSql")
             ?? "Host=localhost;Database=naia;Username=naia;Password=naia_dev_password";
+        
+        // Suppress loading table list from PostgreSQL - this prevents enum type introspection
+        // which fails because we don't define PostgreSQL enum types (we use string-based enums via EF Core)
+        AppContext.SetSwitch("Npgsql.LoadTableList", false);
+        
+        // Configure NpgsqlDataSource
+        var dataSourceBuilder = new NpgsqlDataSourceBuilder(baseConnectionString);
+        var dataSource = dataSourceBuilder.Build();
         
         services.AddDbContext<NaiaDbContext>(options =>
         {
-            options.UseNpgsql(connectionString, npgsql =>
+            options.UseNpgsql(dataSource, npgsql =>
             {
                 npgsql.EnableRetryOnFailure(
                     maxRetryCount: 3,

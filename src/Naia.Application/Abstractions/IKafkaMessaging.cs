@@ -24,6 +24,16 @@ public interface IDataPointProducer
         CancellationToken cancellationToken = default);
     
     /// <summary>
+    /// Publish a raw JSON message to a specific topic.
+    /// Used for backfill batches and other custom messages.
+    /// </summary>
+    Task<ProduceResult> PublishAsync(
+        string topic,
+        string key,
+        string jsonPayload,
+        CancellationToken cancellationToken = default);
+    
+    /// <summary>
     /// Flush any pending messages.
     /// </summary>
     Task FlushAsync(CancellationToken cancellationToken = default);

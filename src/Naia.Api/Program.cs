@@ -1,19 +1,51 @@
 using Microsoft.EntityFrameworkCore;
+using Naia.Api.Dtos;
+using Naia.Api.Hubs;
 using Naia.Application.Abstractions;
 using Naia.Connectors;
 using Naia.Connectors.Abstractions;
 using Naia.Connectors.PI;
+using Naia.Domain.Entities;
 using Naia.Domain.ValueObjects;
 using Naia.Infrastructure;
 using Naia.Infrastructure.Persistence;
+using Naia.Api.Services;
+using Naia.PatternEngine;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add NAIA infrastructure services
+// Add NAIA infrastructure services (PostgreSQL, QuestDB, Redis, Kafka)
 builder.Services.AddNaiaInfrastructure(builder.Configuration);
 
-// Add PI Web API connector (for discovery/testing endpoints)
+// Add PI connectors
 builder.Services.AddPIWebApiConnector(builder.Configuration);
+
+// Add PI → Kafka data ingestion service (singleton to maintain state)
+builder.Services.AddSingleton<PIDataIngestionService>();
+
+// Add Backfill Orchestrator (background service for historical data backfill)
+builder.Services.AddSingleton<BackfillOrchestrator>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<BackfillOrchestrator>());
+
+// =============================================================================
+// PATTERN FLYWHEEL - The Learning Engine (Hangfire Jobs)
+// =============================================================================
+// Point lookup cache for pattern workers
+builder.Services.AddPointLookupService();
+
+// Pattern engine with Hangfire job scheduling
+builder.Services.AddPatternEngine(builder.Configuration);
+
+// Pattern repositories for API
+builder.Services.AddScoped<ISuggestionRepository, SuggestionRepository>();
+builder.Services.AddScoped<IPatternRepository, PatternRepository>();
+
+// SignalR for real-time suggestion notifications
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<IPatternHubNotifier, PatternHubNotifier>();
+
+// Add Controllers for pattern APIs
+builder.Services.AddControllers();
 
 // Add API services
 builder.Services.AddEndpointsApiExplorer();
@@ -30,6 +62,11 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// =============================================================================
+// PATTERN FLYWHEEL - Hangfire Dashboard & Job Scheduling
+// =============================================================================
+app.UsePatternEngine(builder.Configuration);
 
 // ============================================================================
 // HEALTH CHECK ENDPOINT
@@ -120,9 +157,12 @@ app.MapGet("/api/points", async (
     var points = await repo.SearchAsync(tagName, dataSourceId, enabled, skip, take);
     var total = await repo.CountAsync(tagName, dataSourceId, enabled);
     
+    // Convert to DTOs to avoid circular references
+    var pointDtos = points.Select(p => p.ToDto()).ToList();
+    
     return Results.Ok(new
     {
-        data = points,
+        data = pointDtos,
         total,
         skip,
         take
@@ -150,7 +190,10 @@ app.MapGet("/api/points/{id:guid}/current", async (
     var point = await pointRepo.GetByIdAsync(id);
     if (point is null) return Results.NotFound();
     
-    var current = await cache.GetAsync(point.PointSequenceId);
+    if (point.PointSequenceId is null)
+        return Results.BadRequest("Point not yet synchronized to time-series database");
+    
+    var current = await cache.GetAsync(point.PointSequenceId.Value);
     return current is null 
         ? Results.NotFound("No current value") 
         : Results.Ok(current);
@@ -169,11 +212,14 @@ app.MapGet("/api/points/{id:guid}/history", async (
     var point = await pointRepo.GetByIdAsync(id);
     if (point is null) return Results.NotFound();
     
+    if (point.PointSequenceId is null)
+        return Results.BadRequest("Point not yet synchronized to time-series database");
+    
     var startTime = start ?? DateTime.UtcNow.AddHours(-1);
     var endTime = end ?? DateTime.UtcNow;
     
     var data = await tsReader.ReadRangeAsync(
-        point.PointSequenceId, 
+        point.PointSequenceId.Value, 
         startTime, 
         endTime, 
         limit);
@@ -228,6 +274,56 @@ app.MapGet("/api/pipeline/metrics", async (IIngestionPipeline pipeline) =>
 .WithTags("Pipeline");
 
 // ============================================================================
+// KAFKA / FULL PIPELINE STATUS ENDPOINT
+// ============================================================================
+app.MapGet("/api/pipeline/kafka", (
+    PIDataIngestionService piIngestion,
+    IDataPointProducer producer) =>
+{
+    var producerStatus = piIngestion.GetStatus();
+    
+    return Results.Ok(new
+    {
+        architecture = new
+        {
+            description = "Industrial Historian Pipeline - The First That Learns From You",
+            dataFlow = new[]
+            {
+                "PI System (sdhqpisrvr01) - Source of truth for industrial data",
+                "PIDataIngestionService - Polls PI, publishes to Kafka",
+                "Kafka (naia.datapoints) - Message backbone, buffering, replay",
+                "Naia.Ingestion Worker - Consumes, deduplicates, persists",
+                "QuestDB - Time-series storage (ILP protocol)",
+                "Redis - Current value cache (sub-ms reads)",
+                "Pattern Engine - Learns from your organization patterns"
+            },
+            topics = new
+            {
+                datapoints = "naia.datapoints - Raw ingested data",
+                dlq = "naia.datapoints.dlq - Failed messages",
+                behavior = "naia.points.behavior - Behavioral fingerprints",
+                clusters = "naia.clusters.created - Detected clusters",
+                suggestions = "naia.suggestions.created - Pattern suggestions",
+                feedback = "naia.patterns.feedback - User approvals",
+                patterns = "naia.patterns.updated - Learned patterns"
+            }
+        },
+        producer = producerStatus,
+        endpoints = new
+        {
+            startIngestion = "POST /api/ingestion/start",
+            stopIngestion = "POST /api/ingestion/stop",
+            status = "GET /api/ingestion/status",
+            directIngest = "POST /api/ingest",
+            pipelineHealth = "GET /api/pipeline/health",
+            kafkaUI = "http://localhost:8080"
+        }
+    });
+})
+.WithName("GetKafkaPipelineStatus")
+.WithTags("Pipeline");
+
+// ============================================================================
 // RUN MIGRATIONS ON STARTUP (dev only)
 // ============================================================================
 if (app.Environment.IsDevelopment())
@@ -247,13 +343,17 @@ if (app.Environment.IsDevelopment())
 }
 
 // ============================================================================
-// PI WEB API ENDPOINTS
+// PI SYSTEM ENDPOINTS (AF SDK or Web API)
 // ============================================================================
-app.MapGet("/api/pi/health", async (PIWebApiConnector connector) =>
+app.MapGet("/api/pi/health", async (IServiceProvider sp, IConfiguration config) =>
 {
+    var connector = sp.GetService<PIWebApiConnector>();
+    if (connector == null) return Results.Problem("PI Web API connector not configured");
+    
     var health = await connector.CheckHealthAsync();
     return Results.Ok(new
     {
+        connectorType = "PI Web API",
         connected = health.IsHealthy,
         message = health.Message,
         responseTimeMs = health.ResponseTime.TotalMilliseconds,
@@ -264,13 +364,14 @@ app.MapGet("/api/pi/health", async (PIWebApiConnector connector) =>
 .WithTags("PI System");
 
 app.MapPost("/api/pi/initialize", async (
-    PIWebApiConnector connector,
+    IServiceProvider sp,
     IConfiguration config) =>
 {
     var options = config.GetSection("PIWebApi").Get<PIWebApiOptions>();
-    if (options == null || string.IsNullOrEmpty(options.BaseUrl))
+    
+    if (options == null || string.IsNullOrEmpty(options.DataArchive))
     {
-        return Results.BadRequest("PI Web API not configured. Set PIWebApi section in appsettings.");
+        return Results.BadRequest("PI configuration missing. Set PIWebApi section in appsettings.");
     }
     
     var connConfig = new ConnectorConfiguration
@@ -290,21 +391,27 @@ app.MapPost("/api/pi/initialize", async (
         connConfig.Credentials["Password"] = options.Password ?? "";
     }
     
+    var connector = sp.GetService<PIWebApiConnector>();
+    if (connector == null) return Results.Problem("PI Web API connector not configured");
+    
     await connector.InitializeAsync(connConfig);
     
     return connector.IsAvailable 
-        ? Results.Ok(new { status = "connected", dataArchive = options.DataArchive })
-        : Results.Problem("Failed to connect to PI Web API");
+        ? Results.Ok(new { status = "connected", connectorType = "Web API", dataArchive = options.DataArchive })
+        : Results.Problem("Failed to connect via Web API");
 })
 .WithName("PIInitialize")
 .WithTags("PI System");
 
 app.MapGet("/api/pi/points", async (
-    PIWebApiConnector connector,
+    IServiceProvider sp,
+    IConfiguration config,
     string? filter = null,
     int maxResults = 100) =>
 {
-    if (!connector.IsAvailable)
+    IDiscoverableConnector? connector = sp.GetService<PIWebApiConnector>();
+    
+    if (connector == null || !connector.IsAvailable)
     {
         return Results.BadRequest("PI connector not initialized. Call /api/pi/initialize first.");
     }
@@ -313,6 +420,7 @@ app.MapGet("/api/pi/points", async (
     
     return Results.Ok(new
     {
+        connectorType = "Web API",
         count = points.Count,
         filter = filter ?? "*",
         points = points.Select(p => new
@@ -322,7 +430,7 @@ app.MapGet("/api/pi/points", async (
             p.Description,
             p.EngineeringUnits,
             p.PointType,
-            p.WebId
+            attributes = p.Attributes
         })
     });
 })
@@ -331,9 +439,12 @@ app.MapGet("/api/pi/points", async (
 
 app.MapGet("/api/pi/points/{tagName}/current", async (
     string tagName,
-    PIWebApiConnector connector) =>
+    IServiceProvider sp,
+    IConfiguration config) =>
 {
-    if (!connector.IsAvailable)
+    ICurrentValueConnector? connector = sp.GetService<PIWebApiConnector>();
+    
+    if (connector == null || !connector.IsAvailable)
     {
         return Results.BadRequest("PI connector not initialized. Call /api/pi/initialize first.");
     }
@@ -343,6 +454,7 @@ app.MapGet("/api/pi/points/{tagName}/current", async (
         var value = await connector.ReadCurrentValueAsync(tagName);
         return Results.Ok(new
         {
+            connectorType = "Web API",
             tagName,
             value = value.Value,
             timestamp = value.Timestamp,
@@ -360,9 +472,12 @@ app.MapGet("/api/pi/points/{tagName}/current", async (
 
 app.MapPost("/api/pi/points/current", async (
     string[] tagNames,
-    PIWebApiConnector connector) =>
+    IServiceProvider sp,
+    IConfiguration config) =>
 {
-    if (!connector.IsAvailable)
+    ICurrentValueConnector? connector = sp.GetService<PIWebApiConnector>();
+    
+    if (connector == null || !connector.IsAvailable)
     {
         return Results.BadRequest("PI connector not initialized. Call /api/pi/initialize first.");
     }
@@ -371,6 +486,7 @@ app.MapPost("/api/pi/points/current", async (
     
     return Results.Ok(new
     {
+        connectorType = "Web API",
         count = values.Count,
         requested = tagNames.Length,
         values = values.Select(v => new
@@ -388,11 +504,14 @@ app.MapPost("/api/pi/points/current", async (
 
 app.MapGet("/api/pi/points/{tagName}/history", async (
     string tagName,
-    PIWebApiConnector connector,
+    IServiceProvider sp,
+    IConfiguration config,
     DateTime? start = null,
     DateTime? end = null) =>
 {
-    if (!connector.IsAvailable)
+    IHistoricalDataConnector? connector = sp.GetService<PIWebApiConnector>();
+    
+    if (connector == null || !connector.IsAvailable)
     {
         return Results.BadRequest("PI connector not initialized. Call /api/pi/initialize first.");
     }
@@ -405,6 +524,7 @@ app.MapGet("/api/pi/points/{tagName}/history", async (
         var data = await connector.ReadHistoricalDataAsync(tagName, startTime, endTime);
         return Results.Ok(new
         {
+            connectorType = "Web API",
             tagName,
             startTime,
             endTime,
@@ -428,9 +548,12 @@ app.MapGet("/api/pi/points/{tagName}/history", async (
 
 app.MapGet("/api/pi/points/{tagName}/metadata", async (
     string tagName,
-    PIWebApiConnector connector) =>
+    IServiceProvider sp,
+    IConfiguration config) =>
 {
-    if (!connector.IsAvailable)
+    IDiscoverableConnector? connector = sp.GetService<PIWebApiConnector>();
+    
+    if (connector == null || !connector.IsAvailable)
     {
         return Results.BadRequest("PI connector not initialized. Call /api/pi/initialize first.");
     }
@@ -444,4 +567,935 @@ app.MapGet("/api/pi/points/{tagName}/metadata", async (
 .WithName("PIGetPointMetadata")
 .WithTags("PI System");
 
+// ============================================================================
+// LIVE DATA INGESTION ENDPOINTS
+// ============================================================================
+
+app.MapPost("/api/ingestion/start", async (
+    PIDataIngestionService ingestion,
+    ILogger<Program> logger) =>
+{
+    logger.LogInformation("Starting PI → Kafka ingestion pipeline");
+    await ingestion.StartAsync();
+    return Results.Ok(new
+    {
+        status = "started",
+        message = "PI → Kafka ingestion started. Data flows: PI → Kafka → QuestDB + Redis",
+        pipeline = new
+        {
+            producer = "PI System (AF SDK)",
+            broker = "Kafka (naia.datapoints)",
+            consumer = "Naia.Ingestion Worker",
+            storage = "QuestDB + Redis"
+        },
+        startTime = DateTime.UtcNow
+    });
+})
+.WithName("StartIngestion")
+.WithTags("Ingestion");
+
+app.MapPost("/api/ingestion/stop", async (
+    PIDataIngestionService ingestion,
+    ILogger<Program> logger) =>
+{
+    logger.LogInformation("Stopping PI → Kafka ingestion pipeline");
+    await ingestion.StopAsync();
+    return Results.Ok(new
+    {
+        status = "stopped",
+        message = "PI ingestion stopped. Naia.Ingestion worker continues processing queued messages.",
+        stopTime = DateTime.UtcNow
+    });
+})
+.WithName("StopIngestion")
+.WithTags("Ingestion");
+
+app.MapGet("/api/ingestion/status", (PIDataIngestionService ingestion) =>
+{
+    var status = ingestion.GetStatus();
+    return Results.Ok(status);
+})
+.WithName("GetIngestionStatus")
+.WithTags("Ingestion");
+
+// ============================================================================
+// END-TO-END TEST ENDPOINT: Discover PI Points → Create Metadata → Ingest Live Data
+// ============================================================================
+app.MapPost("/api/pi/test-end-to-end", async (
+    IServiceProvider sp,
+    IConfiguration config,
+    IPointRepository pointRepo,
+    IDataSourceRepository dataSourceRepo,
+    IUnitOfWork unitOfWork,
+    ITimeSeriesWriter questDbWriter,
+    ITimeSeriesReader questDbReader,
+    ICurrentValueCache redis) =>
+{
+    var connector = sp.GetService<PIWebApiConnector>() as ICurrentValueConnector;
+        
+    if (connector == null)
+        return Results.Problem("PI connector not configured");
+        
+    if (connector is not IDiscoverableConnector discoverable)
+        return Results.Problem("Connector does not support discovery");
+        
+    var log = new List<string>();
+    
+    try
+    {
+        // Step 1: Create/Find PI DataSource in PostgreSQL
+        log.Add("Step 1: Creating/Finding PI DataSource...");
+        var piServerName = config["PIWebApi:DataArchive"] ?? "PI_System";
+        var existingDataSource = (await dataSourceRepo.GetAllAsync())
+            .FirstOrDefault(ds => ds.SourceType == DataSourceType.PiWebApi);
+            
+        DataSource dataSource;
+        if (existingDataSource != null)
+        {
+            dataSource = existingDataSource;
+            log.Add($"✅ Found existing: {dataSource.Name} (ID: {dataSource.Id})");
+        }
+        else
+        {
+            dataSource = DataSource.Create(
+                $"PI System - {piServerName}",
+                DataSourceType.PiWebApi,
+                config["PIWebApi:BaseUrl"],
+                "PI Web API Connection",
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    DataArchive = config["PIWebApi:DataArchive"],
+                    ConnectorType = "Web API"
+                }));
+            await dataSourceRepo.AddAsync(dataSource);
+            await unitOfWork.SaveChangesAsync();
+            log.Add($"✅ Created new DataSource: {dataSource.Name} (ID: {dataSource.Id})");
+        }
+        dataSource.UpdateConnectionStatus(ConnectionStatus.Connected);
+        await unitOfWork.SaveChangesAsync();
+        
+        // Step 2: Discover PI points
+        log.Add("Step 2: Discovering SINUSOID* points from PI...");
+        var discovered = await discoverable.DiscoverPointsAsync("SINUSOID*");
+        
+        if (discovered.Count == 0)
+        {
+            log.Add("⚠️ No SINUSOID points found, trying CDT158...");
+            discovered = await discoverable.DiscoverPointsAsync("CDT158");
+        }
+        
+        if (discovered.Count == 0)
+        {
+            log.Add("⚠️ No test points found, getting first 3 points...");
+            var allPoints = await discoverable.DiscoverPointsAsync("*");
+            discovered = allPoints.Take(3).ToList();
+        }
+        
+        var testPoints = discovered.Take(3).ToList();
+        log.Add($"✅ Found {testPoints.Count} points: {string.Join(", ", testPoints.Select(p => p.Name))}");
+        
+        // Step 3: Create Point metadata in PostgreSQL
+        log.Add("Step 3: Creating Point metadata in PostgreSQL...");
+        var points = new List<Point>();
+        
+        foreach (var disc in testPoints)
+        {
+            // Search for existing point by tag name
+            var searchResults = await pointRepo.SearchAsync(tagNamePattern: disc.Name, take: 1);
+            var existing = searchResults.FirstOrDefault();
+            
+            if (existing != null)
+            {
+                points.Add(existing);
+                log.Add($"⏭️ Point exists: {existing.Name} (SeqId: {existing.PointSequenceId})");
+                continue;
+            }
+            
+            var point = Point.Create(
+                disc.Name,
+                PointValueType.Float64,
+                PointKind.Input,
+                disc.Description,
+                disc.EngineeringUnits,
+                dataSource.Id,
+                disc.SourceAddress);
+            await pointRepo.AddAsync(point);
+            points.Add(point);
+            log.Add($"✅ Created: {point.Name}");
+        }
+        await unitOfWork.SaveChangesAsync();
+        
+        // Refresh to get PointSequenceId assigned by database
+        for (int i = 0; i < points.Count; i++)
+        {
+            var refreshed = await pointRepo.GetByIdAsync(points[i].Id);
+            if (refreshed != null)
+            {
+                points[i] = refreshed;
+                log.Add($"   PointSequenceId: {points[i].Name} = {points[i].PointSequenceId}");
+            }
+        }
+        
+        // Step 4: Read current values from PI
+        log.Add("Step 4: Reading live values from PI System...");
+        var valuesDict = await connector.ReadCurrentValuesAsync(
+            points.Select(p => p.SourceAddress!));
+        var values = valuesDict.Values.ToList();
+        log.Add($"✅ Read {values.Count} live values from PI");
+        
+        // Step 5: Write to QuestDB
+        log.Add("Step 5: Writing time-series data to QuestDB...");
+        var dataPoints = new List<DataPoint>();
+        
+        foreach (var point in points)
+        {
+            if (point.PointSequenceId == 0)
+            {
+                log.Add($"⚠️ Skipping {point.Name} - no PointSequenceId");
+                continue;
+            }
+            
+            if (!valuesDict.TryGetValue(point.SourceAddress!, out var value))
+            {
+                log.Add($"[WARNING] No value found for {point.Name}");
+                continue;
+            }
+            
+            if (!point.PointSequenceId.HasValue)
+            {
+                log.Add($"[WARNING] Skipping {point.Name} - not yet assigned sequence ID");
+                continue;
+            }
+            
+            var isGood = value.Quality == Naia.Connectors.Abstractions.DataQuality.Good;
+            var dataPoint = DataPoint.FromPi(
+                point.PointSequenceId.Value,
+                point.Name,
+                value.Timestamp,
+                Convert.ToDouble(value.Value),
+                isGood,
+                dataSource.Id.ToString(),
+                point.SourceAddress);
+            dataPoints.Add(dataPoint);
+            log.Add($"✅ QuestDB: {point.Name} = {value.Value} {value.Units} @ {value.Timestamp:yyyy-MM-dd HH:mm:ss}");
+        }
+        
+        if (dataPoints.Any())
+        {
+            var batch = DataPointBatch.Create(dataPoints, dataSource.Id.ToString());
+            await questDbWriter.WriteAsync(batch);
+            await questDbWriter.FlushAsync();
+            log.Add("✅ QuestDB flush complete");
+        }
+        
+        // Step 6: Write to Redis cache
+        log.Add("Step 6: Caching current values in Redis...");
+        var currentValues = new List<CurrentValue>();
+        
+        foreach (var point in points)
+        {
+            if (!point.PointSequenceId.HasValue || point.PointSequenceId == 0) continue;
+            
+            if (!valuesDict.TryGetValue(point.SourceAddress!, out var value))
+                continue;
+            
+            var currentValue = new CurrentValue
+            {
+                PointSequenceId = point.PointSequenceId.Value,
+                PointName = point.Name,
+                Timestamp = value.Timestamp,
+                Value = Convert.ToDouble(value.Value),
+                Quality = value.Quality == Naia.Connectors.Abstractions.DataQuality.Good 
+                    ? Naia.Domain.ValueObjects.DataQuality.Good 
+                    : Naia.Domain.ValueObjects.DataQuality.Bad,
+                EngineeringUnits = value.Units
+            };
+            currentValues.Add(currentValue);
+        }
+        
+        if (currentValues.Any())
+        {
+            await redis.SetManyAsync(currentValues);
+            log.Add($"✅ Cached {currentValues.Count} values in Redis");
+        }
+        
+        // Step 7: Verify by reading back from QuestDB
+        log.Add("Step 7: Verifying data in QuestDB...");
+        foreach (var point in points)
+        {
+            if (!point.PointSequenceId.HasValue || point.PointSequenceId == 0) continue;
+            
+            var last = await questDbReader.GetLastValueAsync(point.PointSequenceId.Value);
+            if (last != null)
+            {
+                log.Add($"[OK] Verified: {point.Name} = {last.Value} @ {last.Timestamp:HH:mm:ss}");
+            }
+            else
+            {
+                log.Add($"⚠️ Not found in QuestDB: {point.Name}");
+            }
+        }
+        
+        log.Add("");
+        log.Add("🎉 END-TO-END TEST COMPLETE!");
+        log.Add($"📊 {points.Count} points are now registered and ingesting live data");
+        log.Add($"📍 Data pipeline:");
+        log.Add($"   PI System ({piServerName})");
+        log.Add($"     ↓ AF SDK");
+        log.Add($"   Point Metadata (PostgreSQL)");
+        log.Add($"     ↓ {string.Join(", ", points.Select(p => p.Name))}");
+        log.Add($"   Time Series (QuestDB) + Cache (Redis)");
+        
+        return Results.Ok(new
+        {
+            success = true,
+            pointsCreated = points.Count,
+            dataSource = new
+            {
+                id = dataSource.Id,
+                name = dataSource.Name,
+                type = dataSource.SourceType.ToString(),
+                status = dataSource.Status.ToString()
+            },
+            points = points.Select(p => new
+            {
+                id = p.Id,
+                sequenceId = p.PointSequenceId,
+                name = p.Name,
+                sourceAddress = p.SourceAddress,
+                description = p.Description,
+                units = p.EngineeringUnits
+            }),
+            log
+        });
+    }
+    catch (Exception ex)
+    {
+        log.Add($"❌ ERROR: {ex.Message}");
+        log.Add($"Stack: {ex.StackTrace}");
+        
+        return Results.Json(new
+        {
+            success = false,
+            error = ex.Message,
+            stackTrace = ex.StackTrace,
+            log
+        }, statusCode: 500);
+    }
+})
+.WithName("PITestEndToEnd")
+.WithTags("PI System")
+.WithDescription("Complete end-to-end test: Discover PI points → Create metadata in PostgreSQL → Read live values → Store in QuestDB → Cache in Redis");
+
+// ============================================================================
+// SETUP PIPELINE ENDPOINT - One-command PI → NAIA integration
+// ============================================================================
+// This is the KEY endpoint for "The First Industrial Historian That Learns From You"
+// It discovers PI points, registers them in NAIA, and starts the learning pipeline
+
+app.MapPost("/api/pi/setup-pipeline", async (
+    IServiceProvider sp,
+    IConfiguration config,
+    IPointRepository pointRepo,
+    IDataSourceRepository dataSourceRepo,
+    IUnitOfWork unitOfWork,
+    PIDataIngestionService ingestion,
+    ILogger<Program> logger,
+    string filter = "MLR1*",
+    string? dataSourceName = null,
+    string pointPrefix = "NAIA",
+    bool startIngestion = true,
+    int maxPoints = 100) =>
+{
+    var log = new List<string>();
+    var startTime = DateTime.UtcNow;
+    
+    try
+    {
+        log.Add("═══════════════════════════════════════════════════════════════════");
+        log.Add("  NAIA Pipeline Setup - The First Industrial Historian That Learns");
+        log.Add("═══════════════════════════════════════════════════════════════════");
+        log.Add($"  Filter: {filter}");
+        log.Add($"  Point Prefix: {pointPrefix}");
+        log.Add($"  Max Points: {maxPoints}");
+        log.Add("");
+        
+        // Step 1: Get or initialize PI connector
+        log.Add("[STEP 1] Initializing PI Connector...");
+        var piServerName = config["PIWebApi:DataArchive"] ?? "unknown";
+        
+        ICurrentValueConnector? connector = null;
+        try
+        {
+            connector = sp.GetService<PIWebApiConnector>() as ICurrentValueConnector;
+        }
+        catch (Exception ex)
+        {
+            log.Add($"  ✗ Failed to get PI connector from DI: {ex.Message}");
+            logger.LogError(ex, "Failed to get PI connector from DI");
+            return Results.Problem($"PI connector not available: {ex.Message}");
+        }
+            
+        if (connector == null)
+        {
+            log.Add("  ✗ PI connector not configured in DI");
+            return Results.Problem("PI connector not configured in DI");
+        }
+            
+        // Initialize if not already available
+        if (!connector.IsAvailable)
+        {
+            log.Add($"  Connecting to PI Data Archive: {piServerName}...");
+            var options = config.GetSection("PIWebApi").Get<PIWebApiOptions>();
+            
+            if (options == null || string.IsNullOrEmpty(options.DataArchive))
+            {
+                log.Add("  ✗ PI configuration missing");
+                return Results.BadRequest("PI configuration missing. Set PIWebApi section in appsettings.");
+            }
+            
+            var connConfig = new ConnectorConfiguration
+            {
+                ConnectionString = options.BaseUrl,
+                PiDataArchive = options.DataArchive,
+                AfServerName = options.AfServer,
+                UseWindowsAuth = options.UseWindowsAuth,
+                Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds),
+                MaxConcurrentRequests = options.MaxConcurrentRequests,
+                Credentials = new Dictionary<string, string>()
+            };
+            
+            try
+            {
+                if (connector is PIWebApiConnector webConnectorToInit)
+                {
+                    await webConnectorToInit.InitializeAsync(connConfig);
+                }
+                else
+                {
+                    throw new InvalidOperationException($"Unknown connector type: {connector?.GetType().Name ?? "null"}");
+                }
+            }
+            catch (Exception ex)
+            {
+                log.Add($"  ✗ Failed to connect to PI: {ex.Message}");
+                logger.LogError(ex, "Failed to initialize PI connector to {Server}", piServerName);
+                return Results.Problem($"Failed to connect to PI Data Archive '{piServerName}': {ex.Message}");
+            }
+            
+            if (!connector.IsAvailable)
+            {
+                log.Add($"  ✗ PI connector reports not available after initialization");
+                return Results.Problem($"Failed to connect to PI Data Archive: {piServerName}");
+            }
+        }
+        
+        log.Add($"  ✓ Connected to PI: {piServerName}");
+        
+        // Step 2: Create or find DataSource
+        log.Add("");
+        log.Add("[STEP 2] Setting up Data Source...");
+        var dsName = dataSourceName ?? $"{piServerName}-{filter.Replace("*", "").TrimEnd('.')}";
+        
+        var existingDataSource = (await dataSourceRepo.GetAllAsync())
+            .FirstOrDefault(ds => ds.Name == dsName);
+            
+        DataSource dataSource;
+        if (existingDataSource != null)
+        {
+            dataSource = existingDataSource;
+            dataSource.UpdateConnectionStatus(ConnectionStatus.Connected);
+            log.Add($"  ✓ Found existing DataSource: {dataSource.Name}");
+        }
+        else
+        {
+            dataSource = DataSource.Create(
+                dsName,
+                DataSourceType.PiWebApi,
+                $"PI:{piServerName}",
+                $"PI System connection for {filter} points",
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    DataArchive = piServerName,
+                    Filter = filter,
+                    ConnectorType = "Web API"
+                }));
+            await dataSourceRepo.AddAsync(dataSource);
+            dataSource.UpdateConnectionStatus(ConnectionStatus.Connected);
+            await unitOfWork.SaveChangesAsync();
+            log.Add($"  ✓ Created new DataSource: {dataSource.Name} (ID: {dataSource.Id})");
+        }
+        
+        // Step 3: Discover points from PI
+        log.Add("");
+        log.Add("[STEP 3] Discovering PI Points...");
+        
+        if (connector is not IDiscoverableConnector discoverable)
+            return Results.Problem("Connector does not support point discovery");
+            
+        var discovered = await discoverable.DiscoverPointsAsync(filter, maxPoints);
+        log.Add($"  ✓ Found {discovered.Count} points matching '{filter}'");
+        
+        if (discovered.Count == 0)
+        {
+            log.Add("  ⚠ No points found matching filter");
+            return Results.Ok(new
+            {
+                success = false,
+                message = $"No PI points found matching filter: {filter}",
+                log
+            });
+        }
+        
+        // Step 4: Check which points already exist in NAIA
+        log.Add("");
+        log.Add("[STEP 4] Checking existing NAIA points...");
+        
+        // Batch lookup for efficiency
+        var sourceAddresses = discovered.Select(d => d.SourceAddress).ToList();
+        var existingByAddress = (await pointRepo.GetBySourceAddressesAsync(sourceAddresses))
+            .ToDictionary(p => p.SourceAddress ?? "", p => p);
+        
+        var newPoints = new List<(DiscoveredPoint pi, Point naia)>();
+        var existingPoints = new List<Point>();
+        
+        foreach (var disc in discovered)
+        {
+            // Check by SourceAddress (PI tag name)
+            if (existingByAddress.TryGetValue(disc.SourceAddress, out var existing))
+            {
+                existingPoints.Add(existing);
+                log.Add($"  ⏭ Already exists: {existing.Name} (SeqId: {existing.PointSequenceId})");
+            }
+            else
+            {
+                // Create new point with prefix
+                var naiaName = string.IsNullOrEmpty(pointPrefix) 
+                    ? disc.Name 
+                    : $"{pointPrefix}.{disc.Name}";
+                    
+                var point = Point.Create(
+                    naiaName,
+                    PointValueType.Float64,
+                    PointKind.Input,
+                    disc.Description,
+                    disc.EngineeringUnits,
+                    dataSource.Id,
+                    disc.SourceAddress);  // PI tag name stored as SourceAddress
+                    
+                newPoints.Add((disc, point));
+            }
+        }
+        
+        // Step 5: Register new points in PostgreSQL
+        log.Add("");
+        log.Add("[STEP 5] Registering new points in NAIA...");
+        
+        var createdPoints = new List<Point>();
+        foreach (var (disc, point) in newPoints)
+        {
+            await pointRepo.AddAsync(point);
+            log.Add($"  ✓ Created: {point.Name} (Source: {point.SourceAddress})");
+        }
+        
+        if (newPoints.Any())
+        {
+            await unitOfWork.SaveChangesAsync();
+            
+            // Refresh to get PointSequenceId assigned by database
+            foreach (var (_, point) in newPoints)
+            {
+                var refreshed = await pointRepo.GetByIdAsync(point.Id);
+                if (refreshed != null)
+                {
+                    createdPoints.Add(refreshed);
+                    log.Add($"    → PointSequenceId: {refreshed.PointSequenceId}");
+                }
+            }
+        }
+        
+        var allPoints = existingPoints.Concat(createdPoints).ToList();
+        log.Add($"  Total points ready for ingestion: {allPoints.Count}");
+        
+        // Step 6: Optionally start ingestion
+        if (startIngestion && !ingestion.IsRunning)
+        {
+            log.Add("");
+            log.Add("[STEP 6] Starting ingestion pipeline...");
+            await ingestion.StartAsync();
+            log.Add("  ✓ PI → Kafka ingestion started");
+            log.Add("  ✓ Data flowing: PI → Kafka → QuestDB + Redis");
+        }
+        else if (ingestion.IsRunning)
+        {
+            log.Add("");
+            log.Add("[STEP 6] Ingestion already running - new points will be picked up automatically");
+        }
+        
+        // Summary
+        var duration = DateTime.UtcNow - startTime;
+        log.Add("");
+        log.Add("═══════════════════════════════════════════════════════════════════");
+        log.Add("  PIPELINE SETUP COMPLETE");
+        log.Add("═══════════════════════════════════════════════════════════════════");
+        log.Add($"  DataSource:      {dataSource.Name}");
+        log.Add($"  Points Created:  {createdPoints.Count}");
+        log.Add($"  Points Existing: {existingPoints.Count}");
+        log.Add($"  Total Active:    {allPoints.Count}");
+        log.Add($"  Ingestion:       {(ingestion.IsRunning ? "RUNNING" : "STOPPED")}");
+        log.Add($"  Duration:        {duration.TotalSeconds:F2}s");
+        log.Add("");
+        log.Add("  Next steps:");
+        log.Add("    • Data flows automatically: PI → Kafka → QuestDB + Redis");
+        log.Add("    • Pattern Engine analyzes data every 5-15 minutes");
+        log.Add("    • Check Hangfire dashboard: http://localhost:5052/hangfire");
+        log.Add("    • Monitor: GET /api/ingestion/status");
+        
+        logger.LogInformation(
+            "Pipeline setup complete: {NewPoints} new points, {ExistingPoints} existing, ingestion {Status}",
+            createdPoints.Count, existingPoints.Count, ingestion.IsRunning ? "running" : "stopped");
+        
+        return Results.Ok(new
+        {
+            success = true,
+            dataSource = new
+            {
+                id = dataSource.Id,
+                name = dataSource.Name,
+                type = dataSource.SourceType.ToString()
+            },
+            points = new
+            {
+                created = createdPoints.Select(p => new
+                {
+                    id = p.Id,
+                    sequenceId = p.PointSequenceId,
+                    name = p.Name,
+                    sourceAddress = p.SourceAddress,
+                    units = p.EngineeringUnits
+                }),
+                existing = existingPoints.Select(p => new
+                {
+                    id = p.Id,
+                    sequenceId = p.PointSequenceId,
+                    name = p.Name,
+                    sourceAddress = p.SourceAddress
+                }),
+                totalActive = allPoints.Count
+            },
+            ingestion = new
+            {
+                running = ingestion.IsRunning,
+                status = ingestion.GetStatus()
+            },
+            durationMs = duration.TotalMilliseconds,
+            log
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Pipeline setup failed for filter: {Filter}", filter);
+        log.Add($"❌ ERROR: {ex.Message}");
+        
+        return Results.Json(new
+        {
+            success = false,
+            error = ex.Message,
+            stackTrace = ex.StackTrace,
+            log
+        }, statusCode: 500);
+    }
+})
+.WithName("SetupPipeline")
+.WithTags("PI System")
+.WithDescription(@"
+One-command setup: Discover PI points → Register in NAIA → Start ingestion pipeline.
+This is the primary endpoint for setting up new data sources.
+
+Parameters:
+- filter: PI point name filter (default: 'MLR1*')
+- dataSourceName: Optional custom name for the data source
+- pointPrefix: Prefix for NAIA point names (default: 'NAIA')
+- startIngestion: Auto-start the ingestion pipeline (default: true)
+- maxPoints: Maximum points to discover (default: 100)
+
+Example: POST /api/pi/setup-pipeline?filter=MLR1*&pointPrefix=NAIA&startIngestion=true
+");
+
+// ============================================================================
+// BACKFILL ENDPOINTS
+// ============================================================================
+
+app.MapPost("/api/backfill/start", async (
+    BackfillStartRequest request,
+    BackfillOrchestrator orchestrator) =>
+{
+    try
+    {
+        var requestId = await orchestrator.QueueBackfillAsync(
+            request.ConnectorType,
+            request.PointAddresses,
+            request.StartTime,
+            request.EndTime,
+            request.ChunkSize);
+        
+        return Results.Ok(new
+        {
+            success = true,
+            data = new
+            {
+                requestId,
+                connectorType = request.ConnectorType,
+                pointCount = request.PointAddresses.Count,
+                startTime = request.StartTime,
+                endTime = request.EndTime,
+                chunkSize = request.ChunkSize,
+                status = "Queued",
+                message = $"Backfill queued: {request.PointAddresses.Count} points from {request.StartTime:yyyy-MM-dd} to {request.EndTime:yyyy-MM-dd}"
+            }
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new
+        {
+            success = false,
+            error = ex.Message
+        }, statusCode: 500);
+    }
+})
+.WithName("StartBackfill")
+.WithTags("Backfill")
+.WithDescription("Queue historical data backfill from PI System (AF SDK or Web API)");
+
+app.MapGet("/api/backfill/status", (BackfillOrchestrator orchestrator) =>
+{
+    var status = orchestrator.GetStatus();
+    
+    return Results.Ok(new
+    {
+        success = true,
+        data = new
+        {
+            activeRequests = status.ActiveRequests.Select(r => new
+            {
+                requestId = r.RequestId,
+                connectorType = r.ConnectorType,
+                pointCount = r.PointAddresses.Count,
+                startTime = r.StartTime,
+                endTime = r.EndTime,
+                status = r.Status,
+                progress = r.ProgressPercentage,
+                totalChunks = r.TotalChunks,
+                completedChunks = r.CompletedChunks,
+                failedChunks = r.FailedChunks,
+                pointsProcessed = r.PointsProcessed,
+                batchesPublished = r.BatchesPublished,
+                queuedAt = r.QueuedAt,
+                startedAt = r.StartedAt,
+                completedAt = r.CompletedAt
+            }),
+            stats = new
+            {
+                completedRequests = status.Stats.CompletedRequests,
+                failedRequests = status.Stats.FailedRequests,
+                totalPointsBackfilled = status.Stats.TotalPointsBackfilled,
+                totalBatchesPublished = status.Stats.TotalBatchesPublished,
+                failedChunks = status.Stats.FailedChunks
+            },
+            queueDepth = status.QueueDepth
+        }
+    });
+})
+.WithName("GetBackfillStatus")
+.WithTags("Backfill")
+.WithDescription("Get current backfill status and statistics");
+
+app.MapGet("/api/backfill/request/{requestId:guid}", (
+    Guid requestId,
+    BackfillOrchestrator orchestrator) =>
+{
+    var request = orchestrator.GetRequestStatus(requestId);
+    
+    if (request == null)
+    {
+        return Results.NotFound(new
+        {
+            success = false,
+            error = $"Backfill request {requestId} not found"
+        });
+    }
+    
+    return Results.Ok(new
+    {
+        success = true,
+        data = new
+        {
+            requestId = request.RequestId,
+            connectorType = request.ConnectorType,
+            pointAddresses = request.PointAddresses,
+            startTime = request.StartTime,
+            endTime = request.EndTime,
+            chunkSize = request.ChunkSize,
+            status = request.Status,
+            progress = request.ProgressPercentage,
+            totalChunks = request.TotalChunks,
+            completedChunks = request.CompletedChunks,
+            failedChunks = request.FailedChunks,
+            pointsProcessed = request.PointsProcessed,
+            batchesPublished = request.BatchesPublished,
+            queuedAt = request.QueuedAt,
+            startedAt = request.StartedAt,
+            completedAt = request.CompletedAt,
+            lastCheckpoint = request.LastCheckpoint
+        }
+    });
+})
+.WithName("GetBackfillRequest")
+.WithTags("Backfill")
+.WithDescription("Get status of a specific backfill request");
+
+// =============================================================================
+// MAP CONTROLLERS & SIGNALR HUBS
+// =============================================================================
+app.MapControllers();
+app.MapHub<PatternHub>("/hubs/patterns");
+
+// =============================================================================
+// AUTO-INITIALIZE PIPELINE ON STARTUP
+// =============================================================================
+// Try to auto-discover points and start ingestion if not already done
+using (var scope = app.Services.CreateAsyncScope())
+{
+    try
+    {
+        var sp = scope.ServiceProvider;
+        var pointRepo = sp.GetRequiredService<IPointRepository>();
+        var existingPoints = await pointRepo.GetEnabledAsync();
+        
+        // Only auto-setup if no points exist yet
+        if (!existingPoints.Any())
+        {
+            var ingestion = sp.GetRequiredService<PIDataIngestionService>();
+            var logger = sp.GetRequiredService<ILogger<Program>>();
+            
+            logger.LogInformation("Auto-initializing NAIA pipeline on startup (no points found)");
+            
+            var config = sp.GetRequiredService<IConfiguration>();
+            var dataSourceRepo = sp.GetRequiredService<IDataSourceRepository>();
+            var unitOfWork = sp.GetRequiredService<IUnitOfWork>();
+            
+            var filter = config["DefaultPointFilter"] ?? "*BESS*";
+            var maxPoints = int.Parse(config["DefaultMaxPoints"] ?? "100");
+            
+            try
+            {
+                // Get or initialize PI connector
+                var connector = sp.GetService<PIWebApiConnector>() as ICurrentValueConnector;
+                if (connector != null && !connector.IsAvailable)
+                {
+                    var options = config.GetSection("PIWebApi").Get<PIWebApiOptions>();
+                    if (options != null)
+                    {
+                        var connConfig = new ConnectorConfiguration
+                        {
+                            ConnectionString = options.BaseUrl,
+                            PiDataArchive = options.DataArchive,
+                            AfServerName = options.AfServer,
+                            UseWindowsAuth = options.UseWindowsAuth,
+                            Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds),
+                            MaxConcurrentRequests = options.MaxConcurrentRequests,
+                            Credentials = new Dictionary<string, string>()
+                        };
+                        
+                        if (connector is PIWebApiConnector webConnector)
+                        {
+                            await webConnector.InitializeAsync(connConfig);
+                        }
+                    }
+                }
+                
+                if (connector != null && connector.IsAvailable && connector is IDiscoverableConnector discoverable)
+                {
+                    logger.LogInformation("Auto-discovering points with filter: {Filter}", filter);
+                    var discovered = await discoverable.DiscoverPointsAsync(filter, maxPoints);
+                    
+                    if (discovered.Any())
+                    {
+                        logger.LogInformation("Auto-discovered {Count} points, registering...", discovered.Count);
+                        
+                        // Create datasource
+                        var dsName = $"Auto-{filter.Replace("*", "").TrimEnd('.')}";
+                        var dataSource = DataSource.Create(
+                            dsName,
+                            DataSourceType.PiWebApi,
+                            "PI:Auto",
+                            $"Auto-discovered PI points: {filter}",
+                            System.Text.Json.JsonSerializer.Serialize(new { Filter = filter }));
+                        dataSource.UpdateConnectionStatus(ConnectionStatus.Connected);
+                        await dataSourceRepo.AddAsync(dataSource);
+                        await unitOfWork.SaveChangesAsync();
+                        
+                        // Register points
+                        foreach (var disc in discovered)
+                        {
+                            var point = Point.Create(
+                                $"NAIA.{disc.Name}",
+                                PointValueType.Float64,
+                                PointKind.Input,
+                                disc.Description,
+                                disc.EngineeringUnits,
+                                dataSource.Id,
+                                disc.SourceAddress);
+                            await pointRepo.AddAsync(point);
+                        }
+                        
+                        await unitOfWork.SaveChangesAsync();
+                        logger.LogInformation("Registered {Count} points from auto-discovery", discovered.Count);
+                        
+                        // Start ingestion
+                        if (!ingestion.IsRunning)
+                        {
+                            await ingestion.StartAsync();
+                            logger.LogInformation("Auto-started PI → Kafka ingestion pipeline");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Auto-initialization failed, manual setup required via /api/pi/setup-pipeline");
+            }
+        }
+        else
+        {
+            // Points already exist, just ensure ingestion is running
+            var ingestion = sp.GetRequiredService<PIDataIngestionService>();
+            var logger = sp.GetRequiredService<ILogger<Program>>();
+            
+            if (!ingestion.IsRunning)
+            {
+                await ingestion.StartAsync();
+                logger.LogInformation("Resumed PI ingestion pipeline ({PointCount} points)", existingPoints.Count);
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Error during auto-initialization: {ex.Message}");
+    }
+}
+
 app.Run();
+
+// ============================================================================
+// DTOs
+// ============================================================================
+
+record BackfillStartRequest(
+    string ConnectorType,
+    List<string> PointAddresses,
+    DateTime StartTime,
+    DateTime EndTime,
+    TimeSpan? ChunkSize);
+

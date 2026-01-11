@@ -32,8 +32,22 @@ public interface IPointRepository
     /// Get sequence ID mappings for efficient lookups.
     /// Returns: Dictionary of TagName → SequenceId
     /// </summary>
-    Task<IDictionary<string, long>> GetTagNameToSequenceIdMapAsync(
+    Task<IDictionary<string, long?>> GetTagNameToSequenceIdMapAsync(
         Guid dataSourceId,
+        CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Get point by its source address (e.g., PI tag name).
+    /// </summary>
+    Task<Point?> GetBySourceAddressAsync(
+        string sourceAddress,
+        CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Get points by multiple source addresses.
+    /// </summary>
+    Task<IReadOnlyList<Point>> GetBySourceAddressesAsync(
+        IEnumerable<string> sourceAddresses,
         CancellationToken cancellationToken = default);
 }
 

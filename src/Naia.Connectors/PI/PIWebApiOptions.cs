@@ -60,6 +60,11 @@ public sealed class PIWebApiOptions
     public int BatchSize { get; set; } = 100;
     
     /// <summary>
+    /// Enable automatic point discovery on startup
+    /// </summary>
+    public bool EnableAutoDiscovery { get; set; } = false;
+    
+    /// <summary>
     /// Point name filters for discovery (comma-separated wildcards)
     /// Example: "WIND.*,SOLAR.*,BESS.*"
     /// </summary>

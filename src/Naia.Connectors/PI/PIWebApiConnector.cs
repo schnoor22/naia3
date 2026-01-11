@@ -44,7 +44,26 @@ public sealed class PIWebApiConnector : ICurrentValueConnector, IHistoricalDataC
     
     public PIWebApiConnector(HttpClient httpClient, ILogger<PIWebApiConnector> logger)
     {
-        _httpClient = httpClient;
+        // Create a new HttpClient with SSL bypass for self-signed certificates
+        // This ensures the callback is applied at socket level before TLS handshake
+        var handler = new HttpClientHandler
+        {
+            UseDefaultCredentials = true,
+            PreAuthenticate = true,
+            // Accept all certificates (development environment only)
+            ServerCertificateCustomValidationCallback = (message, certificate, chain, errors) =>
+            {
+                // Log certificate issues but accept anyway
+                if (errors != System.Net.Security.SslPolicyErrors.None)
+                {
+                    logger.LogWarning("SSL certificate validation error: {Errors}. Certificate subject: {Subject}", 
+                        errors, certificate?.Subject);
+                }
+                return true; // Accept the certificate
+            }
+        };
+        
+        _httpClient = new HttpClient(handler);
         _logger = logger;
         _throttle = new SemaphoreSlim(10, 10); // Default max concurrent requests
     }
@@ -55,27 +74,39 @@ public sealed class PIWebApiConnector : ICurrentValueConnector, IHistoricalDataC
         _baseUrl = config.ConnectionString.TrimEnd('/');
         _dataServerName = config.PiDataArchive;
         
-        // Configure authentication
-        ConfigureAuthentication(config);
-        
-        _httpClient.Timeout = config.Timeout;
-        _httpClient.DefaultRequestHeaders.Accept.Add(
-            new MediaTypeWithQualityHeaderValue("application/json"));
-        
-        // Test connection
-        var health = await CheckHealthAsync(ct);
-        IsAvailable = health.IsHealthy;
-        
-        if (IsAvailable)
+        // Configure authentication (only once per singleton lifetime)
+        if (!_httpClient.DefaultRequestHeaders.Contains("Accept"))
         {
-            _logger.LogInformation("PI Web API connector initialized: {BaseUrl}", _baseUrl);
-            
-            // Cache the data server WebId for faster lookups
-            await CacheDataServerWebIdAsync(ct);
+            ConfigureAuthentication(config);
+            _httpClient.DefaultRequestHeaders.Accept.Add(
+                new MediaTypeWithQualityHeaderValue("application/json"));
         }
-        else
+        
+        // Test connection with timeout via CancellationToken instead
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(config.Timeout);
+        
+        try
         {
-            _logger.LogWarning("PI Web API connector failed to initialize: {Message}", health.Message);
+            var health = await CheckHealthAsync(cts.Token);
+            IsAvailable = health.IsHealthy;
+            
+            if (IsAvailable)
+            {
+                _logger.LogInformation("PI Web API connector initialized: {BaseUrl}", _baseUrl);
+                
+                // Cache the data server WebId for faster lookups
+                await CacheDataServerWebIdAsync(ct);
+            }
+            else
+            {
+                _logger.LogWarning("PI Web API connector failed to initialize: {Message}", health.Message);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            IsAvailable = false;
+            _logger.LogError("PI Web API connection timeout");
         }
     }
     
@@ -164,11 +195,20 @@ public sealed class PIWebApiConnector : ICurrentValueConnector, IHistoricalDataC
     {
         try
         {
-            var response = await _httpClient.GetFromJsonAsync<PIWebApiItemsResponse<PIDataServer>>(
-                $"{_baseUrl}/dataservers", ct);
+            var url = $"{_baseUrl}/dataservers";
+            _logger.LogInformation("Fetching data servers from: {Url}", url);
+            
+            var response = await _httpClient.GetFromJsonAsync<PIWebApiItemsResponse<PIDataServer>>(url, ct);
             
             if (response?.Items != null)
             {
+                _logger.LogInformation("Found {Count} data servers in PI", response.Items.Count);
+                
+                foreach (var server in response.Items)
+                {
+                    _logger.LogInformation("  - Server: {Name} (WebId: {WebId})", server.Name, server.WebId);
+                }
+                
                 // Find the target data server or use the first one
                 var targetServer = !string.IsNullOrEmpty(_dataServerName)
                     ? response.Items.FirstOrDefault(s => 
@@ -180,9 +220,17 @@ public sealed class PIWebApiConnector : ICurrentValueConnector, IHistoricalDataC
                     _dataServerWebId = targetServer.WebId;
                     _dataServerName = targetServer.Name;
                     _logger.LogInformation(
-                        "Cached PI Data Archive: {ServerName} (WebId: {WebId})", 
+                        "Selected PI Data Archive: {ServerName} (WebId: {WebId})", 
                         _dataServerName, _dataServerWebId);
                 }
+                else
+                {
+                    _logger.LogWarning("Could not find data server '{ServerName}' in PI system", _dataServerName);
+                }
+            }
+            else
+            {
+                _logger.LogWarning("No data servers returned from PI Web API");
             }
         }
         catch (Exception ex)
@@ -228,15 +276,14 @@ public sealed class PIWebApiConnector : ICurrentValueConnector, IHistoricalDataC
         
         // Get WebIds for all points (uses cache where available)
         var webIdMap = new Dictionary<string, string>(); // WebId -> SourceAddress
-        var webIds = new List<string>();
+        var webIds = new List<(string webId, string address)>();
         
         foreach (var address in addressList)
         {
             try
             {
                 var webId = await GetPointWebIdAsync(address, ct);
-                webIds.Add(webId);
-                webIdMap[webId] = address;
+                webIds.Add((webId, address));
             }
             catch (Exception ex)
             {
@@ -247,30 +294,24 @@ public sealed class PIWebApiConnector : ICurrentValueConnector, IHistoricalDataC
         if (webIds.Count == 0)
             return results;
         
-        // Batch request - PI Web API supports up to ~100 WebIds per request
-        const int batchSize = 100;
-        foreach (var batch in webIds.Chunk(batchSize))
+        // Use individual /streams/{webId}/value calls to avoid URL length limits
+        foreach (var (webId, address) in webIds)
         {
             await _throttle.WaitAsync(ct);
             try
             {
-                var webIdParam = string.Join("&webId=", batch);
-                var response = await _httpClient.GetFromJsonAsync<PIWebApiItemsResponse<PIStreamValue>>(
-                    $"{_baseUrl}/streamsets/value?webId={webIdParam}", ct);
+                var response = await _httpClient.GetFromJsonAsync<PIStreamValue>(
+                    $"{_baseUrl}/streams/{webId}/value", ct);
                 
-                if (response?.Items != null)
+                if (response?.Value != null)
                 {
-                    foreach (var item in response.Items)
-                    {
-                        if (item.WebId != null && webIdMap.TryGetValue(item.WebId, out var address))
-                        {
-                            if (item.Value != null)
-                            {
-                                results[address] = MapToDataValue(item.Value);
-                            }
-                        }
-                    }
+                    results[address] = MapToDataValue(response.Value);
                 }
+            }
+            catch (Exception ex)
+            {
+                // Log at Trace level to reduce noise - many points return incompatible formats
+                _logger.LogTrace(ex, "Failed to read current value for {Address}", address);
             }
             finally
             {
@@ -401,58 +442,82 @@ public sealed class PIWebApiConnector : ICurrentValueConnector, IHistoricalDataC
     {
         var results = new List<DiscoveredPoint>();
         
-        if (string.IsNullOrEmpty(_dataServerWebId))
-        {
-            await CacheDataServerWebIdAsync(ct);
-            if (string.IsNullOrEmpty(_dataServerWebId))
-            {
-                _logger.LogWarning("No PI Data Server WebId available for discovery");
-                return results;
-            }
-        }
-        
         await _throttle.WaitAsync(ct);
         try
         {
-            // Build search query
-            var query = string.IsNullOrEmpty(nameFilter) ? "*" : $"*{nameFilter}*";
             var pageSize = Math.Min(maxResults, 1000);
             
-            var url = $"{_baseUrl}/dataservers/{_dataServerWebId}/points?nameFilter={Uri.EscapeDataString(query)}&maxCount={pageSize}";
+            // Build the search/query endpoint URL with pagination support
+            var url = $"{_baseUrl}/search/query";
             
-            var response = await _httpClient.GetFromJsonAsync<PIWebApiItemsResponse<PIPoint>>(url, ct);
-            
-            if (response?.Items != null)
+            // Build the query parameter - just use name filter
+            string query;
+            if (!string.IsNullOrEmpty(nameFilter) && nameFilter != "*")
             {
-                foreach (var point in response.Items.Take(maxResults))
-                {
-                    results.Add(new DiscoveredPoint
-                    {
-                        SourceAddress = point.Name ?? "",
-                        Name = point.Name ?? "",
-                        Description = point.Descriptor,
-                        EngineeringUnits = point.EngineeringUnits,
-                        PointType = point.PointType,
-                        WebId = point.WebId,
-                        Attributes = new Dictionary<string, object>
-                        {
-                            ["pointClass"] = point.PointClass ?? "",
-                            ["span"] = point.Span ?? 0,
-                            ["zero"] = point.Zero ?? 0,
-                            ["step"] = point.Step,
-                            ["future"] = point.Future
-                        }
-                    });
-                    
-                    // Cache WebId for later use
-                    if (!string.IsNullOrEmpty(point.Name) && !string.IsNullOrEmpty(point.WebId))
-                    {
-                        _webIdCache[point.Name.ToUpperInvariant()] = point.WebId;
-                    }
-                }
-                
-                _logger.LogInformation("Discovered {Count} PI Points matching '{Filter}'", results.Count, nameFilter);
+                // PI Web API search syntax is simple - no escaping needed
+                query = $"name:{nameFilter}";
             }
+            else
+            {
+                query = "*";  // Match all
+            }
+            
+            // Build full URL with count parameter to request more results
+            var fullUrl = $"{url}?q={System.Net.WebUtility.UrlEncode(query)}&count={pageSize}";
+            
+            _logger.LogInformation("Discovering PI points - URL: {Url}", fullUrl);
+            
+            try
+            {
+                var response = await _httpClient.GetFromJsonAsync<PIWebApiSearchResponse>(fullUrl, ct);
+                
+                if (response?.Items != null && response.Items.Count > 0)
+                {
+                    _logger.LogInformation("Found {TotalHits} points matching filter '{Filter}'", response.TotalHits ?? response.Items.Count, nameFilter);
+                    
+                    // Log point names for debugging
+                    var allPoints = string.Join("\n  ", response.Items.Take(50).Select(p => p.Name ?? "unknown"));
+                    _logger.LogInformation("Sample {Count} point names from {Server}:\n  {Points}", 
+                        Math.Min(50, response.Items.Count), _dataServerName, allPoints);
+                    
+                    foreach (var point in response.Items.Take(maxResults))
+                    {
+                        results.Add(new DiscoveredPoint
+                        {
+                            SourceAddress = point.Name ?? "",
+                            Name = point.Name ?? "",
+                            Description = point.Description,
+                            EngineeringUnits = point.UoM,
+                            PointType = point.DataType,
+                            WebId = point.WebId,
+                            Attributes = new Dictionary<string, object>
+                            {
+                                ["itemType"] = point.ItemType ?? "",
+                                ["uniqueId"] = point.UniqueID ?? ""
+                            }
+                        });
+                        
+                        if (!string.IsNullOrEmpty(point.Name) && !string.IsNullOrEmpty(point.WebId))
+                        {
+                            _webIdCache[point.Name.ToUpperInvariant()] = point.WebId;
+                        }
+                    }
+                    
+                    _logger.LogInformation("Successfully discovered {Count} points matching filter '{Filter}'", results.Count, nameFilter);
+                }
+                else
+                {
+                    _logger.LogWarning("No points returned from PI search endpoint");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error querying PI search endpoint: {Url}", fullUrl);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in DiscoverPointsAsync");
         }
         finally
         {

@@ -111,18 +111,11 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
-      ZOOKEEPER_4LW_COMMANDS_WHITELIST: "srvr,ruok"
     ports:
       - "2181:2181"
     volumes:
       - zookeeper_data:/var/lib/zookeeper/data
       - zookeeper_log:/var/lib/zookeeper/log
-    healthcheck:
-      test: ["CMD-SHELL", "echo srvr | nc localhost 2181 | grep -q Mode || exit 1"]
-      interval: 10s
-      timeout: 10s
-      retries: 10
-      start_period: 15s
     restart: unless-stopped
     networks:
       - naia-network
@@ -135,8 +128,7 @@ services:
     container_name: naia-kafka
     hostname: kafka
     depends_on:
-      zookeeper:
-        condition: service_healthy
+      - zookeeper
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181

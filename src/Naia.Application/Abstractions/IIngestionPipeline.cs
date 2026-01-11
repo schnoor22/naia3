@@ -138,4 +138,12 @@ public sealed class PipelineMetrics
     public string? LastError { get; set; }
     public DateTime? LastErrorAt { get; set; }
     public bool HasRecentErrors { get; set; }
+    
+    // Computed properties for monitoring
+    public long TotalBatchesProcessed => TotalBatches;
+    public long TotalPointsProcessed => TotalPoints;
+    public double PointsPerSecond => LastProcessedAt.HasValue && TotalPoints > 0
+        ? TotalPoints / (DateTime.UtcNow - LastProcessedAt.Value.AddSeconds(-1)).TotalSeconds
+        : 0;
+    public double AverageProcessingMs => AverageDurationMs;
 }
