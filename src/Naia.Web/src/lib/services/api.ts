@@ -278,3 +278,9 @@ export async function discoverPIPoints(filter?: string, maxResults?: number): Pr
 	const query = params.toString();
 	return fetchApi(`/api/pi/points${query ? `?${query}` : ''}`);
 }
+export async function addPIPoints(points: any[]): Promise<any> {
+	return fetchApi('/api/pi/points/add', {
+		method: 'POST',
+		body: JSON.stringify({ points })
+	});
+}

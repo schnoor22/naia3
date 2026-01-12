@@ -1,26 +1,34 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
-	import * as echarts from 'echarts';
-	import { searchPoints, getHistory, type Point, type HistoricalDataResponse } from '$lib/services/api';
+	import { onMount, tick } from 'svelte';
+	import { browser } from '$app/environment';
+	import { page } from '$app/stores';
+	import { searchPoints, getPoint, getHistory, type Point, type HistoricalDataResponse } from '$lib/services/api';
 
-	let chartContainer: HTMLDivElement;
-	let chart: echarts.ECharts | null = null;
+	// Dynamically import Plotly only in browser
+	let Plotly: typeof import('plotly.js-dist-min') | null = null;
+
+	let chartElement: HTMLDivElement | null = null;
 	let loading = $state(false);
 	let searchLoading = $state(false);
+	let showDataTable = $state(true);
+
+	// Trend data storage for table display
+	let trendData = $state<Array<{ pointName: string; timestamp: Date; value: number; color: string }>>([]);
 
 	// Point selection
 	let searchQuery = $state('');
 	let searchResults = $state<Point[]>([]);
 	let selectedPoints = $state<Point[]>([]);
 	let showSearch = $state(false);
+	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	// Time range
 	const timeRanges = [
-		{ label: '1 Hour', hours: 1 },
-		{ label: '8 Hours', hours: 8 },
-		{ label: '24 Hours', hours: 24 },
-		{ label: '7 Days', hours: 168 },
-		{ label: '30 Days', hours: 720 },
+		{ label: '1H', hours: 1 },
+		{ label: '8H', hours: 8 },
+		{ label: '24H', hours: 24 },
+		{ label: '7D', hours: 168 },
+		{ label: '30D', hours: 720 },
 	];
 	let selectedRange = $state(timeRanges[2]); // Default 24h
 
@@ -36,58 +44,146 @@
 		'#ec4899', // pink
 	];
 
-	async function searchTags() {
-		if (!searchQuery.trim()) {
-			searchResults = [];
-			return;
-		}
-
+	async function loadAllTags() {
 		searchLoading = true;
 		try {
-			const result = await searchPoints({ tagName: searchQuery, take: 20 });
-			searchResults = result.data.filter(p => p.pointSequenceId && !selectedPoints.find(s => s.id === p.id));
+			const result = await searchPoints({ tagName: '', take: 500 });
+			searchResults = result.data.filter(p => !selectedPoints.find(s => s.id === p.id));
 		} catch (e) {
-			console.error('Search failed:', e);
+			console.error('Failed to load tags:', e);
+			searchResults = [];
 		} finally {
 			searchLoading = false;
 		}
 	}
 
-	function addPoint(point: Point) {
-		if (selectedPoints.length >= 8) {
-			return; // Max 8 series
+	async function searchTags() {
+		const query = searchQuery.trim();
+		
+		// If empty, show all tags
+		if (!query) {
+			loadAllTags();
+			return;
 		}
-		selectedPoints = [...selectedPoints, point];
+
+		if (searchTimeout) clearTimeout(searchTimeout);
+
+		searchTimeout = setTimeout(async () => {
+			searchLoading = true;
+			try {
+				const result = await searchPoints({ tagName: query === '*' ? '' : query, take: 500 });
+				searchResults = result.data.filter(p => !selectedPoints.find(s => s.id === p.id));
+			} catch (e) {
+				console.error('Search failed:', e);
+				searchResults = [];
+			} finally {
+				searchLoading = false;
+			}
+		}, 200);
+	}
+
+	function openSearch() {
+		showSearch = true;
+		searchQuery = '';
+		// Auto-load all tags when opening the dropdown
+		loadAllTags();
+	}
+
+	function closeSearch() {
+		showSearch = false;
 		searchQuery = '';
 		searchResults = [];
-		showSearch = false;
+	}
+
+	function addPoint(point: Point) {
+		if (selectedPoints.length >= 8) return;
+		selectedPoints = [...selectedPoints, point];
+		closeSearch();
+		// Load chart data - loadChartData will wait for element to be ready
 		loadChartData();
 	}
 
 	function removePoint(point: Point) {
 		selectedPoints = selectedPoints.filter(p => p.id !== point.id);
-		loadChartData();
+		if (selectedPoints.length === 0) {
+			trendData = [];
+			if (chartElement && Plotly) {
+				Plotly.purge(chartElement);
+			}
+		} else {
+			loadChartData();
+		}
+	}
+
+	function changeTimeRange(range: typeof timeRanges[0]) {
+		selectedRange = range;
+		if (selectedPoints.length > 0) {
+			loadChartData();
+		}
 	}
 
 	async function loadChartData() {
-		if (selectedPoints.length === 0 || !chart) {
-			chart?.clear();
+		if (selectedPoints.length === 0) {
+			trendData = [];
+			if (chartElement && Plotly) {
+				Plotly.purge(chartElement);
+			}
 			return;
 		}
 
-		loading = true;
+		// Prevent concurrent loads
+		if (loading) {
+			console.log('Chart load already in progress, skipping');
+			return;
+		}
 
 		try {
+			// Unset loading first to make sure element will be rendered
+			loading = false;
+			await tick();
+
+			// Wait for chart element to be available (with generous timeout)
+			let attempts = 0;
+			while (!chartElement && attempts < 50) {
+				console.log(`Waiting for chartElement, attempt ${attempts}`, { chartElement });
+				await tick();
+				attempts++;
+			}
+
+			console.log('After wait loop:', { chartElement, attempts, hasParent: chartElement?.parentElement });
+
+			if (!chartElement) {
+				console.warn('Chart element failed to initialize after 50 ticks');
+				return;
+			}
+
+			// Store element reference before async operations
+			const element = chartElement;
+
+			// Fetch data WITHOUT setting loading = true (don't hide the element)
 			const end = new Date();
 			const start = new Date(end.getTime() - selectedRange.hours * 60 * 60 * 1000);
 
-			// Load data for all selected points in parallel
 			const dataPromises = selectedPoints.map(point =>
 				getHistory(point.id, start, end, 2000).catch(() => null)
 			);
 
 			const results = await Promise.all(dataPromises);
-			renderChart(results, selectedPoints);
+			
+			// Wait for browser to paint and calculate layout
+			await new Promise(resolve => {
+				requestAnimationFrame(() => {
+					requestAnimationFrame(resolve);
+				});
+			});
+			
+			console.log('Before renderChart, element in DOM:', {
+				offsetWidth: element.offsetWidth,
+				offsetHeight: element.offsetHeight,
+				parent: element.parentElement?.className
+			});
+			
+			renderChart(results, selectedPoints, start, end, element);
 		} catch (e) {
 			console.error('Failed to load chart data:', e);
 		} finally {
@@ -95,191 +191,281 @@
 		}
 	}
 
-	function renderChart(dataResults: (HistoricalDataResponse | null)[], points: Point[]) {
-		if (!chart) return;
+	function renderChart(dataResults: (HistoricalDataResponse | null)[], points: Point[], rangeStart: Date, rangeEnd: Date, element: HTMLDivElement) {
+		if (!Plotly) {
+			console.warn('Plotly not loaded yet');
+			return;
+		}
+		
+		if (!element) {
+			console.warn('Chart element not available in renderChart');
+			return;
+		}
 
-		const series: echarts.SeriesOption[] = [];
-		const legendData: string[] = [];
+		const traces: any[] = [];
+		const allTrendData: Array<{ pointName: string; timestamp: Date; value: number; color: string }> = [];
 
 		dataResults.forEach((data, index) => {
-			if (!data) return;
+			if (!data || !data.data || data.data.length === 0) return;
 
 			const point = points[index];
 			const color = seriesColors[index % seriesColors.length];
 
-			legendData.push(point.name);
+			const timestamps = data.data.map(d => {
+				const ts = d.timestamp.includes('Z') ? d.timestamp : d.timestamp + 'Z';
+				return new Date(ts);
+			});
+			const values = data.data.map(d => d.value);
 
-			series.push({
+			const combined = timestamps.map((t, i) => ({ t, v: values[i] }));
+			combined.sort((a, b) => a.t.getTime() - b.t.getTime());
+
+			combined.forEach(item => {
+				allTrendData.push({
+					pointName: point.name,
+					timestamp: item.t,
+					value: item.v,
+					color: color
+				});
+			});
+
+			traces.push({
+				x: combined.map(c => c.t),
+				y: combined.map(c => c.v),
+				type: 'scatter',
+				mode: 'lines',
 				name: point.name,
-				type: 'line',
-				data: data.data.map(d => [new Date(d.timestamp).getTime(), d.value]),
-				smooth: false,
-				symbol: 'none',
-				lineStyle: { color, width: 2 },
-				emphasis: { lineStyle: { width: 3 } }
+				line: { color, width: 2 },
+				hovertemplate: '%{x|%b %d, %H:%M:%S}<br><b>%{fullData.name}</b>: %{y:,.4f}<extra></extra>'
 			});
 		});
 
-		const option: echarts.EChartsOption = {
-			backgroundColor: 'transparent',
+		allTrendData.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+		trendData = allTrendData;
+
+		if (traces.length === 0) {
+			console.warn('No traces to render');
+			trendData = [];
+			return;
+		}
+
+		console.log('Rendering chart with', traces.length, 'traces');
+
+		// Determine tick format based on time range
+		let tickformat = '%H:%M';
+		
+		if (selectedRange.hours <= 1) {
+			tickformat = '%H:%M:%S';
+		} else if (selectedRange.hours <= 24) {
+			tickformat = '%H:%M';
+		} else if (selectedRange.hours <= 168) {
+			tickformat = '%b %d %H:%M';
+		} else {
+			tickformat = '%b %d';
+		}
+
+		const layout = {
+			paper_bgcolor: 'transparent',
+			plot_bgcolor: '#1f2937',
+			margin: { l: 70, r: 30, t: 20, b: 60 },
+			height: 450,
+			hovermode: 'x unified' as const,
+			xaxis: {
+				type: 'date' as const,
+				range: [rangeStart, rangeEnd],
+				gridcolor: '#374151',
+				tickfont: { color: '#9ca3af', size: 11 },
+				tickformat: tickformat,
+				nticks: 10,
+				linecolor: '#4b5563',
+				linewidth: 1,
+				showgrid: true,
+				zeroline: false,
+				tickangle: -30
+			},
+			yaxis: {
+				gridcolor: '#374151',
+				tickfont: { color: '#9ca3af', size: 11 },
+				linecolor: '#4b5563',
+				linewidth: 1,
+				showgrid: true,
+				zeroline: false,
+				tickformat: ',.0f'
+			},
 			legend: {
-				data: legendData,
-				textStyle: { color: '#9ca3af' },
-				top: 0,
-				type: 'scroll'
+				orientation: 'h' as const,
+				x: 0,
+				y: 1.12,
+				bgcolor: 'transparent',
+				font: { color: '#d1d5db', size: 11 }
 			},
-			grid: {
-				left: 60,
-				right: 40,
-				top: 40,
-				bottom: 60
-			},
-			tooltip: {
-				trigger: 'axis',
-				backgroundColor: 'rgba(17, 24, 39, 0.95)',
-				borderColor: 'rgba(75, 85, 99, 0.5)',
-				textStyle: { color: '#f3f4f6' },
-				axisPointer: {
-					type: 'cross',
-					label: { backgroundColor: '#374151' }
-				}
-			},
-			toolbox: {
-				feature: {
-					dataZoom: { yAxisIndex: 'none' },
-					restore: {},
-					saveAsImage: {}
-				},
-				iconStyle: { borderColor: '#9ca3af' }
-			},
-			xAxis: {
-				type: 'time',
-				axisLine: { lineStyle: { color: '#374151' } },
-				axisLabel: { color: '#9ca3af' },
-				splitLine: { show: false }
-			},
-			yAxis: {
-				type: 'value',
-				axisLine: { lineStyle: { color: '#374151' } },
-				axisLabel: { color: '#9ca3af' },
-				splitLine: { lineStyle: { color: '#1f2937' } }
-			},
-			dataZoom: [
-				{ type: 'inside', start: 0, end: 100 },
-				{ type: 'slider', start: 0, end: 100, height: 20, bottom: 10 }
-			],
-			series
+			font: { family: 'system-ui, -apple-system, sans-serif', color: '#f3f4f6' }
 		};
 
-		chart.setOption(option, true);
+		const config = {
+			responsive: true,
+			displayModeBar: true,
+			modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'] as const,
+			displaylogo: false,
+			scrollZoom: true
+		};
+
+		try {
+			console.log('Chart element dimensions:', {
+				offsetWidth: element.offsetWidth,
+				offsetHeight: element.offsetHeight,
+				clientWidth: element.clientWidth,
+				clientHeight: element.clientHeight,
+				parent: element.parentElement?.classList.value
+			});
+			Plotly.newPlot(element, traces, layout as any, config);
+			console.log('Chart rendered successfully');
+		} catch (error) {
+			console.error('Failed to render chart - full error:', error);
+			if (error instanceof Error) {
+				console.error('Error message:', error.message);
+				console.error('Error stack:', error.stack);
+			}
+		}
 	}
 
-	onMount(() => {
-		chart = echarts.init(chartContainer, 'dark');
-
-		const resizeObserver = new ResizeObserver(() => {
-			chart?.resize();
+	function formatTimestamp(date: Date): string {
+		return date.toLocaleString('en-US', {
+			month: 'short',
+			day: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit',
+			second: '2-digit',
+			hour12: false
 		});
-		resizeObserver.observe(chartContainer);
+	}
+
+	function formatValue(value: number): string {
+		if (Math.abs(value) >= 1000000) {
+			return (value / 1000000).toFixed(2) + 'M';
+		} else if (Math.abs(value) >= 1000) {
+			return (value / 1000).toFixed(2) + 'k';
+		} else if (Math.abs(value) < 0.01 && value !== 0) {
+			return value.toExponential(2);
+		}
+		return value.toFixed(4);
+	}
+
+	onMount(async () => {
+		if (browser) {
+			const plotlyModule = await import('plotly.js-dist-min');
+			Plotly = plotlyModule.default;
+		}
+
+		const pointId = $page.url.searchParams.get('pointId');
+		
+		if (pointId) {
+			try {
+				const point = await getPoint(pointId);
+				if (point) {
+					selectedPoints = [point];
+					loadChartData();
+				}
+			} catch (e) {
+				console.error('Failed to load point from query params:', e);
+			}
+		}
 
 		return () => {
-			resizeObserver.disconnect();
-			chart?.dispose();
+			if (Plotly && chartElement) {
+				Plotly.purge(chartElement);
+			}
 		};
-	});
-
-	$effect(() => {
-		if (selectedRange && selectedPoints.length > 0) {
-			loadChartData();
-		}
 	});
 </script>
 
-<div class="space-y-6">
-	<!-- Header -->
-	<div class="flex items-center justify-between">
-		<div>
-			<h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">Trend Viewer</h1>
-			<p class="text-gray-500 dark:text-gray-400">Compare multiple historian tags over time</p>
-		</div>
-	</div>
-
-	<!-- Controls -->
-	<div class="card p-4">
-		<div class="flex flex-wrap items-start gap-4">
-			<!-- Tag Selection -->
-			<div class="flex-1 min-w-[300px]">
-				<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-					Selected Tags ({selectedPoints.length}/8)
-				</label>
-				<div class="flex flex-wrap gap-2 min-h-[40px]">
+<div class="space-y-4">
+	<!-- Header Bar -->
+	<div class="card">
+		<div class="p-4 flex flex-wrap items-center gap-4">
+			<!-- Tag Selection Area -->
+			<div class="flex-1 min-w-[200px]">
+				<div class="flex flex-wrap items-center gap-2">
 					{#each selectedPoints as point, index}
 						<span 
-							class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium text-white"
+							class="inline-flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-lg text-sm font-medium text-white shadow-sm"
 							style="background-color: {seriesColors[index % seriesColors.length]}"
 						>
-							{point.name}
+							<span class="max-w-[200px] truncate">{point.name}</span>
 							<button 
-								class="ml-1 hover:bg-white/20 rounded-full p-0.5"
+								class="hover:bg-white/20 rounded p-0.5 transition-colors"
 								onclick={() => removePoint(point)}
+								title="Remove"
 							>
-								<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3 h-3">
+								<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5">
 									<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
 								</svg>
 							</button>
 						</span>
 					{/each}
+					
 					{#if selectedPoints.length < 8}
 						<div class="relative">
 							<button 
-								class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm border-2 border-dashed border-gray-300 dark:border-gray-600 text-gray-500 hover:border-naia-500 hover:text-naia-500 transition-colors"
-								onclick={() => showSearch = !showSearch}
+								class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border-2 border-dashed transition-all
+									{showSearch ? 'border-naia-500 text-naia-500 bg-naia-500/10' : 'border-gray-400 dark:border-gray-600 text-gray-500 hover:border-naia-500 hover:text-naia-500'}"
+								onclick={() => showSearch ? closeSearch() : openSearch()}
 							>
 								<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
 									<path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
 								</svg>
 								Add Tag
+								<span class="text-xs opacity-60">({selectedPoints.length}/8)</span>
 							</button>
 
 							{#if showSearch}
-								<div class="absolute top-full left-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-10">
-									<div class="p-2">
+								<div class="absolute top-full left-0 mt-2 w-[450px] bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 z-20 overflow-hidden">
+									<div class="p-3 border-b border-gray-200 dark:border-gray-700">
 										<input
 											type="text"
-											class="input"
-											placeholder="Search tags..."
+											class="input w-full"
+											placeholder="Search or filter tags..."
 											bind:value={searchQuery}
 											oninput={searchTags}
-											autofocus
 										/>
 									</div>
-									<div class="max-h-60 overflow-y-auto">
+									<div class="max-h-80 overflow-y-auto">
 										{#if searchLoading}
-											<div class="p-4 text-center text-gray-500">
-												<svg class="w-5 h-5 animate-spin mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+											<div class="p-6 text-center text-gray-500">
+												<svg class="w-6 h-6 animate-spin mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
 													<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 													<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 												</svg>
+												Loading tags...
 											</div>
 										{:else if searchResults.length > 0}
+											<div class="text-xs text-gray-400 px-4 py-2 bg-gray-50 dark:bg-gray-700/30 border-b border-gray-100 dark:border-gray-700/50">
+												{searchResults.length} tag{searchResults.length !== 1 ? 's' : ''} found
+											</div>
 											{#each searchResults as result}
 												<button
-													class="w-full px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+													class="w-full px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors border-b border-gray-100 dark:border-gray-700/50 last:border-0"
 													onclick={() => addPoint(result)}
 												>
-													<div class="font-mono text-sm">{result.name}</div>
+													<div class="font-mono text-sm font-medium text-gray-900 dark:text-gray-100">{result.name}</div>
 													{#if result.description}
-														<div class="text-xs text-gray-500 truncate">{result.description}</div>
+														<div class="text-xs text-gray-500 truncate mt-0.5">{result.description}</div>
+													{/if}
+													{#if result.dataSourceName}
+														<div class="text-xs text-naia-400 mt-0.5">{result.dataSourceName}</div>
 													{/if}
 												</button>
 											{/each}
-										{:else if searchQuery}
-											<div class="p-4 text-center text-gray-500 text-sm">
-												No tags found
-											</div>
 										{:else}
-											<div class="p-4 text-center text-gray-500 text-sm">
-												Type to search for tags
+											<div class="p-6 text-center text-gray-500">
+												<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8 mx-auto mb-2 opacity-50">
+													<path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+												</svg>
+												{#if searchQuery}
+													No tags found for "{searchQuery}"
+												{:else}
+													No tags available
+												{/if}
 											</div>
 										{/if}
 									</div>
@@ -287,23 +473,27 @@
 							{/if}
 						</div>
 					{/if}
+					
+					{#if selectedPoints.length === 0}
+						<span class="text-gray-400 text-sm italic">Select tags to view trends</span>
+					{/if}
 				</div>
 			</div>
 
-			<!-- Time Range -->
-			<div>
-				<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-					Time Range
-				</label>
-				<div class="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+			<!-- Divider -->
+			<div class="hidden md:block w-px h-8 bg-gray-300 dark:bg-gray-700"></div>
+
+			<!-- Time Range Selector -->
+			<div class="flex items-center gap-2">
+				<span class="text-sm text-gray-500 dark:text-gray-400">Range:</span>
+				<div class="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
 					{#each timeRanges as range}
 						<button
-							class="px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap"
-							class:bg-naia-500={selectedRange === range}
-							class:text-white={selectedRange === range}
-							class:text-gray-600={selectedRange !== range}
-							class:dark:text-gray-400={selectedRange !== range}
-							onclick={() => selectedRange = range}
+							class="px-3 py-1.5 text-sm font-medium rounded-md transition-all
+								{selectedRange.hours === range.hours 
+									? 'bg-naia-500 text-white shadow-sm' 
+									: 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'}"
+							onclick={() => changeTimeRange(range)}
 						>
 							{range.label}
 						</button>
@@ -313,46 +503,86 @@
 		</div>
 	</div>
 
-	<!-- Chart -->
+	<!-- Chart Area -->
 	<div class="card overflow-hidden">
-		<div class="relative">
-			{#if loading}
-				<div class="absolute inset-0 flex items-center justify-center bg-gray-900/50 z-10">
-					<div class="flex items-center gap-2 text-gray-400">
-						<svg class="w-5 h-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-						</svg>
-						Loading data...
-					</div>
-				</div>
-			{/if}
-
-			{#if selectedPoints.length === 0}
-				<div class="flex flex-col items-center justify-center h-96 text-gray-500">
-					<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-12 h-12 mb-4 opacity-50">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+		{#if loading}
+			<div class="flex items-center justify-center h-[450px] bg-gray-900/30">
+				<div class="flex flex-col items-center gap-3 text-gray-400">
+					<svg class="w-8 h-8 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
 					</svg>
-					<p class="text-lg font-medium">No tags selected</p>
-					<p class="text-sm">Click "Add Tag" above to select historian points to trend</p>
+					<span>Loading trend data...</span>
+				</div>
+			</div>
+		{:else if selectedPoints.length === 0}
+			<div class="flex flex-col items-center justify-center h-[450px] text-gray-500 bg-gray-900/20">
+				<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" class="w-16 h-16 mb-4 opacity-30">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605" />
+				</svg>
+				<p class="text-lg font-medium mb-1">No Tags Selected</p>
+				<p class="text-sm opacity-75">Click "Add Tag" to select historian points to trend</p>
+			</div>
+		{:else}
+			<div bind:this={chartElement} class="w-full" style="height: 450px;"></div>
+		{/if}
+	</div>
+
+	<!-- Data Table -->
+	{#if selectedPoints.length > 0 && trendData.length > 0}
+		<div class="card overflow-hidden">
+			<div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+				<h3 class="font-semibold text-gray-900 dark:text-gray-100">
+					Data Points
+					<span class="font-normal text-gray-500 text-sm ml-2">({trendData.length.toLocaleString()} samples)</span>
+				</h3>
+				<button 
+					class="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+					onclick={() => showDataTable = !showDataTable}
+				>
+					{showDataTable ? 'Hide' : 'Show'}
+				</button>
+			</div>
+			{#if showDataTable}
+				<div class="max-h-80 overflow-y-auto">
+					<table class="w-full text-sm">
+						<thead class="bg-gray-50 dark:bg-gray-800/50 sticky top-0">
+							<tr>
+								<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Timestamp</th>
+								<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tag</th>
+								<th class="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Value</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+							{#each trendData.slice(0, 500) as row}
+								<tr class="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+									<td class="px-4 py-2 font-mono text-xs text-gray-600 dark:text-gray-400">{formatTimestamp(row.timestamp)}</td>
+									<td class="px-4 py-2">
+										<span 
+											class="inline-block w-2 h-2 rounded-full mr-2"
+											style="background-color: {row.color}"
+										></span>
+										<span class="text-gray-900 dark:text-gray-100">{row.pointName}</span>
+									</td>
+									<td class="px-4 py-2 text-right font-mono text-gray-900 dark:text-gray-100">{formatValue(row.value)}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+					{#if trendData.length > 500}
+						<div class="px-4 py-3 text-center text-sm text-gray-500 bg-gray-50 dark:bg-gray-800/50">
+							Showing first 500 of {trendData.length.toLocaleString()} data points
+						</div>
+					{/if}
 				</div>
 			{/if}
-
-			<div 
-				bind:this={chartContainer} 
-				class="w-full h-96"
-				class:invisible={selectedPoints.length === 0}
-			></div>
 		</div>
-	</div>
-
-	<!-- Tips -->
-	<div class="text-sm text-gray-500 dark:text-gray-400">
-		<p>💡 <strong>Tips:</strong> Use mouse wheel to zoom, drag to pan. Click legend items to show/hide series.</p>
-	</div>
+	{/if}
 </div>
 
 <!-- Click outside to close search -->
 {#if showSearch}
-	<div class="fixed inset-0 z-0" onclick={() => showSearch = false}></div>
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div class="fixed inset-0 z-10" onclick={() => showSearch = false}></div>
 {/if}

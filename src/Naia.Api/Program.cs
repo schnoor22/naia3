@@ -279,6 +279,14 @@ app.MapGet("/api/points/{id:guid}/history", async (
         endTime, 
         limit);
     
+    // Transform to DTO format with string timestamps and quality as string
+    var dataDto = data.Select(d => new
+    {
+        timestamp = d.Timestamp.ToString("O"),
+        value = d.Value,
+        quality = d.Quality.ToString()
+    }).ToList();
+    
     return Results.Ok(new
     {
         pointId = id,
@@ -287,7 +295,7 @@ app.MapGet("/api/points/{id:guid}/history", async (
         start = startTime,
         end = endTime,
         count = data.Count,
-        data
+        data = dataDto
     });
 })
 .WithName("GetHistory")
@@ -502,6 +510,7 @@ app.MapPost("/api/pi/initialize", async (
 app.MapGet("/api/pi/points", async (
     IServiceProvider sp,
     IConfiguration config,
+    IPointRepository pointRepo,
     string? filter = null,
     int maxResults = 100) =>
 {
@@ -513,6 +522,11 @@ app.MapGet("/api/pi/points", async (
     }
     
     var points = await connector.DiscoverPointsAsync(filter, maxResults);
+    
+    // Check which points already exist in the database
+    var sourceAddresses = points.Select(p => p.SourceAddress).ToList();
+    var existingPoints = (await pointRepo.GetBySourceAddressesAsync(sourceAddresses))
+        .ToDictionary(p => p.SourceAddress ?? "", p => p);
     
     return Results.Ok(new
     {
@@ -526,7 +540,8 @@ app.MapGet("/api/pi/points", async (
             p.Description,
             p.EngineeringUnits,
             p.PointType,
-            attributes = p.Attributes
+            attributes = p.Attributes,
+            existsInDatabase = existingPoints.ContainsKey(p.SourceAddress)
         })
     });
 })
@@ -596,6 +611,83 @@ app.MapPost("/api/pi/points/current", async (
     });
 })
 .WithName("PIGetCurrentValues")
+.WithTags("PI System");
+
+app.MapPost("/api/pi/points/add", async (
+    AddPointsRequest request,
+    IPointRepository pointRepo,
+    IDataSourceRepository dataSourceRepo,
+    IUnitOfWork unitOfWork) =>
+{
+    if (request?.Points == null || request.Points.Count == 0)
+    {
+        return Results.BadRequest("No points provided");
+    }
+
+    // Get or create PI Web API data source
+    var dataSources = await dataSourceRepo.GetAllAsync();
+    var piDataSource = dataSources.FirstOrDefault(ds => ds.SourceType == DataSourceType.PiWebApi);
+    
+    if (piDataSource == null)
+    {
+        // Create a default PI data source if needed
+        piDataSource = DataSource.Create(
+            "OSIsoft PI Web API",
+            DataSourceType.PiWebApi,
+            description: "Discovered PI points via Web API");
+        await dataSourceRepo.AddAsync(piDataSource);
+        await unitOfWork.SaveChangesAsync();
+    }
+
+    var addedCount = 0;
+    var errors = new List<string>();
+
+    foreach (var point in request.Points)
+    {
+        try
+        {
+            var tagName = point.Name ?? point.SourceAddress ?? "unknown";
+            
+            // Check if point already exists
+            var existing = await pointRepo.GetByTagNameAsync(tagName, piDataSource.Id);
+            if (existing != null)
+            {
+                errors.Add($"{tagName}: Point already exists");
+                continue;
+            }
+
+            // Create a point entity from the discovered point
+            var newPoint = Point.Create(
+                name: tagName,
+                description: point.Description,
+                engineeringUnits: point.EngineeringUnits,
+                dataSourceId: piDataSource.Id,
+                sourceAddress: point.SourceAddress);
+
+            await pointRepo.AddAsync(newPoint);
+            addedCount++;
+        }
+        catch (Exception ex)
+        {
+            errors.Add($"{point.SourceAddress ?? "unknown"}: {ex.Message}");
+        }
+    }
+
+    if (addedCount > 0)
+    {
+        await unitOfWork.SaveChangesAsync();
+    }
+
+    return Results.Ok(new
+    {
+        success = true,
+        addedCount,
+        totalRequested = request.Points.Count,
+        errors = errors.Count > 0 ? errors : null,
+        message = $"Successfully added {addedCount} points to ingestion pipeline"
+    });
+})
+.WithName("AddPIPoints")
 .WithTags("PI System");
 
 app.MapGet("/api/pi/points/{tagName}/history", async (
@@ -1621,30 +1713,46 @@ app.MapGet("/api/logs", async (
         var whereClause = new List<string> { "1=1" };
         var parameters = new List<Npgsql.NpgsqlParameter>();
         
-        // Filter by time
+        // Filter by time - convert UTC to Pacific time since logs are stored in PT without timezone
+        // PostgreSQL container runs in UTC, but logs are written in Pacific Time
         if (minutes.HasValue)
         {
-            whereClause.Add($"timestamp > NOW() - INTERVAL '{minutes.Value} minutes'");
+            whereClause.Add($"timestamp > (NOW() AT TIME ZONE 'America/Los_Angeles') - INTERVAL '{minutes.Value} minutes'");
         }
         
         // Filter by level
         if (!string.IsNullOrEmpty(level) && level != "All")
         {
-            whereClause.Add("level = @level");
-            parameters.Add(new Npgsql.NpgsqlParameter("@level", level));
+            // Map level name to integer
+            var levelInt = level.ToLower() switch
+            {
+                "verbose" => 0,
+                "debug" => 1,
+                "information" => 2,
+                "warning" => 3,
+                "error" => 4,
+                "fatal" => 5,
+                _ => -1
+            };
+            
+            if (levelInt >= 0)
+            {
+                whereClause.Add("level = @level");
+                parameters.Add(new Npgsql.NpgsqlParameter("@level", levelInt));
+            }
         }
         
-        // Filter by source context
+        // Filter by source context (using log_event if available)
         if (!string.IsNullOrEmpty(source) && source != "All")
         {
-            whereClause.Add("source_context LIKE @source");
+            whereClause.Add("log_event::text ILIKE @source");
             parameters.Add(new Npgsql.NpgsqlParameter("@source", $"%{source}%"));
         }
         
         // Search in message
         if (!string.IsNullOrEmpty(search))
         {
-            whereClause.Add("(message ILIKE @search OR exception ILIKE @search)");
+            whereClause.Add("(message_template ILIKE @search OR exception ILIKE @search)");
             parameters.Add(new Npgsql.NpgsqlParameter("@search", $"%{search}%"));
         }
         
@@ -1652,32 +1760,145 @@ app.MapGet("/api/logs", async (
             SELECT 
                 timestamp,
                 level,
-                source_context,
-                message,
+                message_template,
                 exception,
-                properties
+                log_event
             FROM logs
             WHERE {string.Join(" AND ", whereClause)}
             ORDER BY timestamp DESC
             LIMIT {take} OFFSET {skip}";
         
-        using var cmd = new Npgsql.NpgsqlCommand(query, conn);
-        cmd.Parameters.AddRange(parameters.ToArray());
-        
         var logs = new List<object>();
-        using var reader = await cmd.ExecuteReaderAsync();
         
-        while (await reader.ReadAsync())
+        using (var cmd = new Npgsql.NpgsqlCommand(query, conn))
         {
-            logs.Add(new
+            cmd.Parameters.AddRange(parameters.ToArray());
+            using var reader = await cmd.ExecuteReaderAsync();
+            
+            while (await reader.ReadAsync())
             {
-                timestamp = reader.GetDateTime(0),
-                level = reader.IsDBNull(1) ? null : reader.GetString(1),
-                source = reader.IsDBNull(2) ? null : reader.GetString(2),
-                message = reader.IsDBNull(3) ? null : reader.GetString(3),
-                exception = reader.IsDBNull(4) ? null : reader.GetString(4),
-                properties = reader.IsDBNull(5) ? null : reader.GetString(5)
-            });
+                var levelInt = reader.IsDBNull(1) ? -1 : reader.GetInt32(1);
+                var levelName = levelInt switch
+                {
+                    0 => "Verbose",
+                    1 => "Debug",
+                    2 => "Information",
+                    3 => "Warning",
+                    4 => "Error",
+                    5 => "Fatal",
+                    _ => "Unknown"
+                };
+                
+                // Extract SourceContext from log_event JSON
+                string? sourceContext = null;
+                if (!reader.IsDBNull(4))
+                {
+                    var logEventJson = reader.GetString(4);
+                    try
+                    {
+                        var logEvent = System.Text.Json.JsonDocument.Parse(logEventJson);
+                        // SourceContext is nested: Properties.SourceContext
+                        if (logEvent.RootElement.TryGetProperty("Properties", out var propertiesElement) &&
+                            propertiesElement.TryGetProperty("SourceContext", out var sourceContextProp))
+                        {
+                            sourceContext = sourceContextProp.GetString();
+                        }
+                    }
+                    catch { /* Ignore JSON parse errors */ }
+                }
+                
+                // Render the message template with actual property values
+                string renderedMessage = reader.IsDBNull(2) ? null : reader.GetString(2);
+                if (!reader.IsDBNull(4) && !reader.IsDBNull(2))
+                {
+                    try
+                    {
+                        var logEvent = System.Text.Json.JsonDocument.Parse(reader.GetString(4));
+                        var messageTemplate = reader.GetString(2);
+                        
+                        // Check for Renderings first (handles format specifiers like {State:l})
+                        if (logEvent.RootElement.TryGetProperty("Renderings", out var renderingsElement))
+                        {
+                            foreach (var renderingProp in renderingsElement.EnumerateObject())
+                            {
+                                var propertyName = renderingProp.Name;
+                                if (renderingProp.Value.ValueKind == System.Text.Json.JsonValueKind.Array &&
+                                    renderingProp.Value.GetArrayLength() > 0)
+                                {
+                                    var firstRendering = renderingProp.Value[0];
+                                    if (firstRendering.TryGetProperty("Rendering", out var renderingValue))
+                                    {
+                                        var rendered = renderingValue.GetString();
+                                        // Replace all variations: {PropertyName}, {PropertyName:format}
+                                        messageTemplate = System.Text.RegularExpressions.Regex.Replace(
+                                            messageTemplate,
+                                            $@"\{{{propertyName}(?::[^}}]+)?\}}",
+                                            rendered ?? "",
+                                            System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Then replace remaining placeholders from Properties
+                        if (logEvent.RootElement.TryGetProperty("Properties", out var propertiesElement))
+                        {
+                            foreach (var property in propertiesElement.EnumerateObject())
+                            {
+                                var propertyName = property.Name;
+                                // Skip metadata properties
+                                if (propertyName == "ThreadId" || propertyName == "ProcessId" || 
+                                    propertyName == "MachineName" || propertyName == "SourceContext" ||
+                                    propertyName == "RequestId" || propertyName == "RequestPath" ||
+                                    propertyName == "SpanId" || propertyName == "TraceId" ||
+                                    propertyName == "TransportConnectionId" || propertyName == "EventId")
+                                    continue;
+                                
+                                string valueStr = "";
+                                if (property.Value.ValueKind == System.Text.Json.JsonValueKind.String)
+                                {
+                                    valueStr = property.Value.GetString() ?? "";
+                                }
+                                else if (property.Value.ValueKind == System.Text.Json.JsonValueKind.Number)
+                                {
+                                    valueStr = property.Value.GetRawText();
+                                }
+                                else if (property.Value.ValueKind == System.Text.Json.JsonValueKind.True ||
+                                         property.Value.ValueKind == System.Text.Json.JsonValueKind.False)
+                                {
+                                    valueStr = property.Value.GetBoolean().ToString();
+                                }
+                                else
+                                {
+                                    valueStr = property.Value.GetRawText();
+                                }
+                                
+                                // Replace all variations: {PropertyName}, {PropertyName:format}
+                                messageTemplate = System.Text.RegularExpressions.Regex.Replace(
+                                    messageTemplate,
+                                    $@"\{{{propertyName}(?::[^}}]+)?\}}",
+                                    valueStr,
+                                    System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                                );
+                            }
+                        }
+                        
+                        renderedMessage = messageTemplate;
+                    }
+                    catch { /* If rendering fails, keep the template as-is */ }
+                }
+                
+                logs.Add(new
+                {
+                    timestamp = reader.GetDateTime(0),
+                    level = levelName,
+                    source = sourceContext,
+                    message = renderedMessage,
+                    exception = reader.IsDBNull(3) ? null : reader.GetString(3),
+                    properties = reader.IsDBNull(4) ? null : reader.GetString(4)
+                });
+            }
         }
         
         // Get total count
@@ -1728,4 +1949,20 @@ record BackfillStartRequest(
     DateTime StartTime,
     DateTime EndTime,
     TimeSpan? ChunkSize);
+
+public class AddPointsRequest
+{
+    public List<DiscoveredPointDto>? Points { get; set; }
+}
+
+public class DiscoveredPointDto
+{
+    public string? SourceAddress { get; set; }
+    public string? Name { get; set; }
+    public string? Description { get; set; }
+    public string? EngineeringUnits { get; set; }
+    public string? PointType { get; set; }
+    public Dictionary<string, object>? Attributes { get; set; }
+}
+
 
