@@ -48,6 +48,7 @@ public sealed class WindFarmReplayWorker : BackgroundService
     private long _messagesPublished;
     private long _errorCount;
     private int _loopCount;
+    private bool _isInitialized;
     
     // Preloaded data cache for faster replay
     private List<(DateTime Timestamp, List<ReplayDataPoint> Points)>? _dataCache;
@@ -97,7 +98,7 @@ public sealed class WindFarmReplayWorker : BackgroundService
         SpeedMultiplier = _options.SpeedMultiplier
     };
     
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("╔════════════════════════════════════════════════════════════════════╗");
         _logger.LogInformation("║   🌬️  WIND FARM REPLAY - Kelmarsh Data Pump                       ║");
@@ -114,10 +115,20 @@ public sealed class WindFarmReplayWorker : BackgroundService
             _isPaused = true;
         }
         
+        // Start background task and return immediately to prevent blocking host startup
+        // BackgroundService will keep the host alive as long as this task is running
+        return RunReplayBackgroundAsync(stoppingToken);
+    }
+    
+    private async Task RunReplayBackgroundAsync(CancellationToken stoppingToken)
+    {
         try
         {
-            // Initialize - load data and calculate offset
+            // Initialize - load data and calculate offset (may take several minutes for large datasets)
+            _logger.LogInformation("Starting async initialization (this may take a few minutes)...");
             await InitializeAsync(stoppingToken);
+            _isInitialized = true;
+            _logger.LogInformation("✓ Replay worker initialization complete - starting replay loop");
             
             // Main replay loop
             while (!stoppingToken.IsCancellationRequested)
@@ -134,7 +145,9 @@ public sealed class WindFarmReplayWorker : BackgroundService
                 {
                     _loopCount++;
                     _logger.LogInformation("Replay complete (loop {Count}). Restarting from beginning...", _loopCount);
+                    _isInitialized = false;
                     await InitializeAsync(stoppingToken); // Recalculate offset for new loop
+                    _isInitialized = true;
                 }
                 else
                 {
@@ -145,17 +158,19 @@ public sealed class WindFarmReplayWorker : BackgroundService
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
-            _logger.LogInformation("Wind Farm Replay shutting down...");
+            _logger.LogInformation("Wind Farm Replay shutting down gracefully...");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Fatal error in Wind Farm Replay worker");
-            throw;
+            _logger.LogError(ex, "Fatal error in Wind Farm Replay worker - stopping");
+            throw; // Re-throw to signal host that worker failed
         }
-        
-        _logger.LogInformation(
-            "Wind Farm Replay stopped. Total: {Messages} messages, {Errors} errors, {Loops} loops",
-            _messagesPublished, _errorCount, _loopCount);
+        finally
+        {
+            _logger.LogInformation(
+                "Wind Farm Replay stopped. Total: {Messages:N0} messages, {Errors} errors, {Loops} loops",
+                _messagesPublished, _errorCount, _loopCount);
+        }
     }
     
     private async Task InitializeAsync(CancellationToken ct)
@@ -189,19 +204,32 @@ public sealed class WindFarmReplayWorker : BackgroundService
     
     private async Task PreloadDataAsync(CancellationToken ct)
     {
-        _logger.LogInformation("Preloading data into memory...");
+        var startTime = DateTime.UtcNow;
+        _logger.LogInformation("📥 Preloading data into memory (this may take 30-60 seconds for large datasets)...");
         
         var allPoints = new Dictionary<DateTime, List<ReplayDataPoint>>();
+        var turbineFiles = _csvReader.GetTurbineFiles().ToList();
         
-        foreach (var (turbineNum, filePath) in _csvReader.GetTurbineFiles())
+        if (!turbineFiles.Any())
+        {
+            throw new InvalidOperationException($"No turbine data files found in {_options.DataDirectory}");
+        }
+        
+        var turbineCount = 0;
+        foreach (var (turbineNum, filePath) in turbineFiles)
         {
             ct.ThrowIfCancellationRequested();
+            turbineCount++;
             
-            _logger.LogDebug("Loading turbine {Num} from {File}...", turbineNum, filePath);
+            _logger.LogInformation("Loading turbine {Num}/{Total}: {Name}...", 
+                turbineCount, turbineFiles.Count, Path.GetFileName(filePath));
             
+            var pointsInTurbine = 0;
             foreach (var batch in _csvReader.ReadTurbineDataBatched(
                 turbineNum, filePath, batchSize: 5000))
             {
+                ct.ThrowIfCancellationRequested();
+                
                 foreach (var point in batch)
                 {
                     if (!allPoints.TryGetValue(point.OriginalTimestamp, out var list))
@@ -210,20 +238,32 @@ public sealed class WindFarmReplayWorker : BackgroundService
                         allPoints[point.OriginalTimestamp] = list;
                     }
                     list.Add(point);
+                    pointsInTurbine++;
+                }
+                
+                // Yield occasionally to prevent blocking thread pool
+                if (pointsInTurbine % 50000 == 0)
+                {
+                    await Task.Yield();
                 }
             }
+            
+            _logger.LogInformation("  ✓ Loaded {Points:N0} points from turbine {Num}", pointsInTurbine, turbineNum);
         }
         
         // Sort by timestamp and cache
+        _logger.LogInformation("Sorting {Count:N0} unique timestamps...", allPoints.Count);
         _dataCache = allPoints
             .OrderBy(kvp => kvp.Key)
             .Select(kvp => (kvp.Key, kvp.Value))
             .ToList();
         
         var totalPoints = _dataCache.Sum(x => x.Points.Count);
+        var elapsed = DateTime.UtcNow - startTime;
+        
         _logger.LogInformation(
-            "Preloaded {Points:N0} points across {Timestamps:N0} timestamps from {Turbines} turbines",
-            totalPoints, _dataCache.Count, _options.TurbineCount);
+            "✓ Preload complete: {Points:N0} points across {Timestamps:N0} timestamps from {Turbines} turbines (took {Seconds:F1}s)",
+            totalPoints, _dataCache.Count, _options.TurbineCount, elapsed.TotalSeconds);
         
         await Task.CompletedTask;
     }
@@ -232,7 +272,7 @@ public sealed class WindFarmReplayWorker : BackgroundService
     {
         if (_dataCache == null || _dataCache.Count == 0)
         {
-            _logger.LogWarning("No data loaded. Cannot replay.");
+            _logger.LogError("❌ No data loaded. Cannot replay - check initialization logs for errors.");
             return;
         }
         

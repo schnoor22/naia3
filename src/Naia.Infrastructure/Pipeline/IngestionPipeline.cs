@@ -1,8 +1,10 @@
 using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Naia.Application.Abstractions;
 using Naia.Domain.ValueObjects;
+using StackExchange.Redis;
 
 namespace Naia.Infrastructure.Pipeline;
 
@@ -29,6 +31,7 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
     private readonly ITimeSeriesWriter _timeSeriesWriter;
     private readonly ICurrentValueCache _currentValueCache;
     private readonly IIdempotencyStore _idempotencyStore;
+    private readonly IConnectionMultiplexer _redis;
     
     private readonly InternalPipelineMetrics _metrics = new();
     private CancellationTokenSource? _cts;
@@ -42,6 +45,7 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
         ITimeSeriesWriter timeSeriesWriter,
         ICurrentValueCache currentValueCache,
         IIdempotencyStore idempotencyStore,
+        IConnectionMultiplexer redis,
         ILogger<IngestionPipeline> logger)
     {
         _options = options.Value;
@@ -50,6 +54,7 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
         _timeSeriesWriter = timeSeriesWriter;
         _currentValueCache = currentValueCache;
         _idempotencyStore = idempotencyStore;
+        _redis = redis;
         _logger = logger;
     }
     
@@ -153,6 +158,9 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
                     // Only commit AFTER successful processing
                     await _consumer.CommitAsync(context, cancellationToken);
                     _metrics.RecordSuccess(result.ProcessedCount, result.DurationMs);
+                    
+                    // Publish metrics to Redis for cross-process visibility
+                    await PublishMetricsToRedisAsync(cancellationToken);
                 }
                 else
                 {
@@ -260,6 +268,25 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
             || ex is System.Net.Http.HttpRequestException
             || ex.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase)
             || ex.Message.Contains("connection", StringComparison.OrdinalIgnoreCase);
+    }
+    
+    /// <summary>
+    /// Publish current metrics snapshot to Redis for cross-process visibility (API can read them).
+    /// </summary>
+    private async Task PublishMetricsToRedisAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var db = _redis.GetDatabase();
+            var snapshot = _metrics.Snapshot();
+            var json = JsonSerializer.Serialize(snapshot);
+            await db.StringSetAsync("naia:pipeline:metrics", json, TimeSpan.FromMinutes(5));
+        }
+        catch (Exception ex)
+        {
+            // Don't fail batch processing if Redis publish fails
+            _logger.LogWarning(ex, "Failed to publish metrics to Redis");
+        }
     }
     
     private async Task SendToDlqAsync(ConsumeContext context, CancellationToken cancellationToken)

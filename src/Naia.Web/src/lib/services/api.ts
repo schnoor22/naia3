@@ -70,7 +70,7 @@ export interface IngestionStatus {
 }
 
 export async function getIngestionStatus(): Promise<IngestionStatus> {
-	return fetchApi<IngestionStatus>('/api/ingestion/metrics');
+	return fetchApi<IngestionStatus>('/api/ingestion/status');
 }
 
 export async function startIngestion(): Promise<any> {
@@ -102,12 +102,12 @@ export interface Point {
 	name: string;
 	description?: string;
 	engineeringUnits?: string;
-	dataType: string;
-	pointType: string;
+	valueType: string;
+	kind: string;
 	sourceAddress: string;
 	dataSourceId: string;
 	dataSourceName?: string;
-	enabled: boolean;
+	isEnabled: boolean;
 	createdAt: string;
 	updatedAt?: string;
 }

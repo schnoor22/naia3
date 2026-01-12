@@ -43,8 +43,9 @@ public static class DependencyInjection
         // Kafka
         services.AddKafka(configuration);
         
-        // Pipeline
-        services.AddScoped<IIngestionPipeline, IngestionPipeline>();
+        // Pipeline MUST be singleton because it maintains long-lived background tasks and state.
+        // If scoped, it gets disposed when the DI scope exits but ProcessLoopAsync continues running.
+        services.AddSingleton<IIngestionPipeline, IngestionPipeline>();
         
         // Point lookup service (for pattern engine and connectors)
         services.AddPointLookupService();
@@ -60,13 +61,7 @@ public static class DependencyInjection
         IConfiguration configuration)
     {
         var baseConnectionString = configuration.GetConnectionString("PostgreSql")
-            ?? "Host=localhost;Database=naia;Username=naia;Password=naia_dev_password;SslMode=Disable";
-        
-        // Log connection string for debugging (mask password)
-        var maskedCs = baseConnectionString.Contains("Password=") 
-            ? System.Text.RegularExpressions.Regex.Replace(baseConnectionString, @"Password=[^;]+", "Password=***")
-            : baseConnectionString;
-        Console.WriteLine($"[PostgreSQL] Connection string: {maskedCs}");
+            ?? "Host=localhost;Database=naia;Username=naia;Password=naia_dev_password;SslMode=Disable;Pooling=false";
         
         // Suppress loading table list from PostgreSQL - this prevents enum type introspection
         // which fails because we don't define PostgreSQL enum types (we use string-based enums via EF Core)
@@ -149,8 +144,11 @@ public static class DependencyInjection
     {
         services.AddSingleton<IDataPointProducer, KafkaDataPointProducer>();
         
-        // Consumer is scoped because it's stateful and tied to a processing context
-        services.AddScoped<IDataPointConsumer>(sp =>
+        // Consumer MUST be singleton because it maintains connection state across the application lifetime.
+        // It's a long-lived object that subscribes to Kafka and stays connected in the ProcessLoopAsync.
+        // If scoped, it gets disposed when the DI scope exits (after pipeline.StartAsync()),
+        // causing the consumer to disconnect and reconnect repeatedly.
+        services.AddSingleton<IDataPointConsumer>(sp =>
         {
             var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<KafkaOptions>>();
             var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<KafkaDataPointConsumer>>();

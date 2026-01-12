@@ -107,21 +107,25 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // Ensure we have a shared Kafka producer (if not already registered)
-        services.AddSingleton<IProducer<string, string>>(sp =>
+        // Register Kafka producer for connectors that publish directly to Kafka
+        // (PIIngestionWorker, WindFarmReplayWorker)
+        // Infrastructure only registers IDataPointProducer (wrapper), not raw IProducer
+        var kafkaBootstrapServers = configuration.GetSection("Kafka:BootstrapServers").Value 
+            ?? "localhost:9092";
+        
+        services.AddSingleton<Confluent.Kafka.IProducer<string, string>>(sp =>
         {
-            var kafkaConfig = new ProducerConfig
+            var config = new Confluent.Kafka.ProducerConfig
             {
-                BootstrapServers = configuration["Kafka:BootstrapServers"] ?? "localhost:9092",
+                BootstrapServers = kafkaBootstrapServers,
                 ClientId = "naia-connectors",
-                Acks = Acks.Leader,
-                EnableIdempotence = false,
-                LingerMs = 5,
-                BatchSize = 16384,
-                CompressionType = CompressionType.Lz4
+                CompressionType = Confluent.Kafka.CompressionType.Lz4,
+                EnableIdempotence = true,
+                Acks = Confluent.Kafka.Acks.All,
+                MessageSendMaxRetries = 3
             };
             
-            return new ProducerBuilder<string, string>(kafkaConfig).Build();
+            return new Confluent.Kafka.ProducerBuilder<string, string>(config).Build();
         });
         
         // PI Web API Connector

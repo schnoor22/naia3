@@ -178,14 +178,19 @@ public sealed class PIDataIngestionService : IAsyncDisposable
         var uptime = _isRunning ? DateTime.UtcNow - _startTime : TimeSpan.Zero;
         var rate = uptime.TotalSeconds > 0 ? _totalPointsPublished / uptime.TotalSeconds : 0;
         
+        // Match the UI's IngestionStatus interface
         return new
         {
-            running = _isRunning,
+            isRunning = _isRunning,
+            pointsConfigured = _metrics.Count,
+            pollInterval = 5000, // Default poll interval in ms
+            lastPollTime = _lastPublishTime == default ? null : (DateTime?)_lastPublishTime,
+            messagesPublished = _totalPointsPublished,
+            errors = _totalErrors,
+            
+            // Additional metrics for detailed views
             uptime = uptime.ToString(@"hh\:mm\:ss"),
-            totalPointsPublished = _totalPointsPublished,
             totalBatchesPublished = _totalBatchesPublished,
-            totalErrors = _totalErrors,
-            lastPublishTime = _lastPublishTime,
             pointsPerSecond = Math.Round(rate, 2),
             metrics = _metrics.ToDictionary(
                 kvp => kvp.Key,
@@ -254,15 +259,22 @@ public sealed class PIDataIngestionService : IAsyncDisposable
             return;
         }
         
-        // Get registered points from PostgreSQL
+        // Get registered points from PostgreSQL - filter to PI data sources only
         var pointRepo = sp.GetRequiredService<IPointRepository>();
-        var points = (await pointRepo.GetEnabledAsync(cancellationToken)).ToList();
+        var allEnabledPoints = (await pointRepo.GetEnabledAsync(cancellationToken)).ToList();
+        
+        // Only poll points from PI data sources (PiWebApi or PiAfSdk)
+        var points = allEnabledPoints
+            .Where(p => p.DataSource != null && 
+                       (p.DataSource.SourceType == DataSourceType.PiWebApi || 
+                        p.DataSource.SourceType == DataSourceType.PiAfSdk))
+            .ToList();
         
         if (points.Count == 0)
         {
             // Log with info level periodically so user can see ingestion is waiting for points
             if (DateTime.UtcNow.Second % 30 == 0)
-                _logger.LogInformation("⏳ Waiting for enabled points (create points via /api/pipeline/setup)");
+                _logger.LogInformation("⏳ Waiting for PI points (found {Total} total enabled points)", allEnabledPoints.Count);
             return;
         }
         

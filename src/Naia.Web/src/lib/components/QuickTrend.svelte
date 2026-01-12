@@ -23,7 +23,7 @@
 		{ label: '24H', hours: 24 },
 		{ label: '7D', hours: 168 },
 	];
-	let selectedRange = $state(timeRanges[0]);
+	let selectedRange = $state(timeRanges[1]); // Default to 8H
 
 	async function loadData() {
 		loading = true;

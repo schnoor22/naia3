@@ -33,6 +33,7 @@ public sealed class PIIngestionWorker : BackgroundService
     private readonly PIWebApiOptions _options;
     private readonly ILogger<PIIngestionWorker> _logger;
     private readonly IPointLookupService _pointLookup;
+    private readonly ICurrentValueCache _currentValueCache;
     
     private readonly List<DiscoveredPoint> _monitoredPoints = new();
     private readonly object _monitoredPointsLock = new();
@@ -52,13 +53,15 @@ public sealed class PIIngestionWorker : BackgroundService
         IProducer<string, string> producer,
         IOptions<PIWebApiOptions> options,
         ILogger<PIIngestionWorker> logger,
-        IPointLookupService pointLookup)
+        IPointLookupService pointLookup,
+        ICurrentValueCache currentValueCache)
     {
         _connector = connector;
         _producer = producer;
         _options = options.Value;
         _logger = logger;
         _pointLookup = pointLookup;
+        _currentValueCache = currentValueCache;
     }
     
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -246,39 +249,95 @@ public sealed class PIIngestionWorker : BackgroundService
         // Read current values
         var values = await _connector.ReadCurrentValuesAsync(addresses, ct);
         
-        // Publish to Kafka
+        // Prepare for publishing to Kafka AND writing to Redis
         var tasks = new List<Task>();
+        var currentValues = new List<Domain.ValueObjects.CurrentValue>();
         
-        lock (_monitoredPointsLock)
+        // First pass: collect point info (needs to be outside lock due to async)
+        var pointInfoLookup = new Dictionary<string, (string Name, long? SequenceId)>();
+        foreach (var (address, _) in values)
         {
-            foreach (var (address, value) in values)
+            DiscoveredPoint? point;
+            lock (_monitoredPointsLock)
             {
-                var point = _monitoredPoints.FirstOrDefault(p => p.SourceAddress == address);
-                if (point == null) continue;
+                point = _monitoredPoints.FirstOrDefault(p => p.SourceAddress == address);
+            }
+            
+            if (point != null)
+            {
+                var pointInfo = await _pointLookup.GetByNameAsync(point.Name, ct);
+                pointInfoLookup[address] = (point.Name, pointInfo?.SequenceId);
+            }
+        }
+        
+        // Second pass: create messages and current values
+        foreach (var (address, value) in values)
+        {
+            if (!pointInfoLookup.TryGetValue(address, out var pointData))
+                continue;
+            
+            DiscoveredPoint? point;
+            lock (_monitoredPointsLock)
+            {
+                point = _monitoredPoints.FirstOrDefault(p => p.SourceAddress == address);
+            }
+            if (point == null) continue;
+            
+            // Create current value for Redis if we have a sequence ID
+            if (pointData.SequenceId.HasValue)
+            {
+                // Convert value to double (PI values are typically numeric)
+                var numericValue = value.Value is double d ? d : Convert.ToDouble(value.Value);
                 
-                var message = new PIDataPointMessage
+                currentValues.Add(new Domain.ValueObjects.CurrentValue
                 {
-                    SourceAddress = address,
-                    PointName = point.Name,
-                    Value = value.Value,
+                    PointSequenceId = pointData.SequenceId.Value,
+                    PointName = pointData.Name,
                     Timestamp = value.Timestamp,
-                    Quality = value.Quality.ToString(),
-                    Units = value.Units ?? point.EngineeringUnits,
-                    DataSourceType = "PIWebApi",
-                    DataArchive = _options.DataArchive,
-                    IngestTimestamp = DateTime.UtcNow
-                };
-                
-                var json = JsonSerializer.Serialize(message, _jsonOptions);
-                
-                tasks.Add(_producer.ProduceAsync(
-                    "naia.datapoints",
-                    new Message<string, string>
-                    {
-                        Key = address,
-                        Value = json
-                    },
-                    ct));
+                    Value = numericValue,
+                    Quality = Domain.ValueObjects.DataQuality.Good,
+                    EngineeringUnits = value.Units ?? point.EngineeringUnits,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            }
+            
+            // Create Kafka message
+            var message = new PIDataPointMessage
+            {
+                SourceAddress = address,
+                PointName = pointData.Name,
+                Value = value.Value,
+                Timestamp = value.Timestamp,
+                Quality = value.Quality.ToString(),
+                Units = value.Units ?? point.EngineeringUnits,
+                DataSourceType = "PIWebApi",
+                DataArchive = _options.DataArchive,
+                IngestTimestamp = DateTime.UtcNow
+            };
+            
+            var json = JsonSerializer.Serialize(message, _jsonOptions);
+            
+            tasks.Add(_producer.ProduceAsync(
+                "naia.datapoints",
+                new Message<string, string>
+                {
+                    Key = address,
+                    Value = json
+                },
+                ct));
+        }
+        
+        // Write current values to Redis for immediate UI visibility
+        if (currentValues.Count > 0)
+        {
+            try
+            {
+                await _currentValueCache.SetManyAsync(currentValues, ct);
+                _logger.LogDebug("Wrote {Count} current values to Redis cache", currentValues.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to write current values to Redis");
             }
         }
         

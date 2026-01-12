@@ -11,8 +11,40 @@ using Naia.Infrastructure;
 using Naia.Infrastructure.Persistence;
 using Naia.Api.Services;
 using Naia.PatternEngine;
+using Serilog;
+using Serilog.Events;
+using StackExchange.Redis;
+
+// =============================================================================
+// SERILOG CONFIGURATION - Structured Logging to PostgreSQL + Console
+// =============================================================================
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Debug()
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
+    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .Enrich.WithMachineName()
+    .Enrich.WithProcessId()
+    .Enrich.WithThreadId()
+    .WriteTo.Console(
+        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext}{NewLine}{Message:lj}{NewLine}{Exception}")
+    .WriteTo.PostgreSQL(
+        connectionString: "Host=localhost;Port=5432;Database=naia;Username=naia;Password=naia_dev_password;SslMode=Disable",
+        tableName: "logs",
+        needAutoCreateTable: true)
+    .CreateLogger();
+
+try
+{
+    Log.Information("═══════════════════════════════════════════════════════════════════");
+    Log.Information("  Starting NAIA API - The First Industrial Historian That Learns");
+    Log.Information("═══════════════════════════════════════════════════════════════════");
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Use Serilog for all logging
+builder.Host.UseSerilog();
 
 // Add NAIA infrastructure services (PostgreSQL, QuestDB, Redis, Kafka)
 builder.Services.AddNaiaInfrastructure(builder.Configuration);
@@ -288,10 +320,51 @@ app.MapGet("/api/pipeline/health", async (IIngestionPipeline pipeline) =>
 .WithName("GetPipelineHealth")
 .WithTags("Pipeline");
 
-app.MapGet("/api/pipeline/metrics", async (IIngestionPipeline pipeline) =>
+app.MapGet("/api/pipeline/metrics", async (IIngestionPipeline pipeline, IConnectionMultiplexer redis) =>
 {
     var metrics = await pipeline.GetMetricsAsync();
-    return Results.Ok(metrics);
+    var health = await pipeline.GetHealthAsync();
+    
+    // If local pipeline is not running, try to get metrics from Redis (shared by Ingestion worker)
+    if (!health.IsHealthy || metrics?.TotalBatches == 0)
+    {
+        try
+        {
+            var db = redis.GetDatabase();
+            var redisMetrics = await db.StringGetAsync("naia:pipeline:metrics");
+            if (redisMetrics.HasValue)
+            {
+                var sharedMetrics = System.Text.Json.JsonSerializer.Deserialize<Naia.Application.Abstractions.PipelineMetrics>(redisMetrics!);
+                if (sharedMetrics != null)
+                {
+                    return Results.Ok(new
+                    {
+                        isRunning = true,
+                        pointsPerSecond = sharedMetrics.PointsPerSecond,
+                        totalPointsIngested = sharedMetrics.TotalPoints,
+                        batchesProcessed = sharedMetrics.TotalBatches,
+                        errors = sharedMetrics.RetryableErrors + sharedMetrics.NonRetryableErrors,
+                        lastUpdateTime = sharedMetrics.LastProcessedAt?.ToString("o") ?? DateTime.UtcNow.ToString("o")
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to read metrics from Redis: {ex.Message}");
+        }
+    }
+    
+    // Transform to match UI's expected PipelineMetrics interface
+    return Results.Ok(new
+    {
+        isRunning = health.IsHealthy,
+        pointsPerSecond = metrics?.PointsPerSecond ?? 0,
+        totalPointsIngested = metrics?.TotalPoints ?? 0,
+        batchesProcessed = metrics?.TotalBatches ?? 0,
+        errors = (metrics?.RetryableErrors ?? 0) + (metrics?.NonRetryableErrors ?? 0),
+        lastUpdateTime = metrics?.LastProcessedAt?.ToString("o") ?? DateTime.UtcNow.ToString("o")
+    });
 })
 .WithName("GetPipelineMetrics")
 .WithTags("Pipeline");
@@ -1528,7 +1601,122 @@ using (var scope = app.Services.CreateAsyncScope())
     }
 }
 
+// ============================================================================
+// LOGS API ENDPOINT - Query structured logs from PostgreSQL
+// ============================================================================
+app.MapGet("/api/logs", async (
+    string? level,
+    string? source,
+    string? search,
+    int? minutes,
+    int skip = 0,
+    int take = 100) =>
+{
+    try
+    {
+        using var conn = new Npgsql.NpgsqlConnection(
+            "Host=localhost;Port=5432;Database=naia;Username=naia;Password=naia_dev_password;SslMode=Disable");
+        await conn.OpenAsync();
+        
+        var whereClause = new List<string> { "1=1" };
+        var parameters = new List<Npgsql.NpgsqlParameter>();
+        
+        // Filter by time
+        if (minutes.HasValue)
+        {
+            whereClause.Add($"timestamp > NOW() - INTERVAL '{minutes.Value} minutes'");
+        }
+        
+        // Filter by level
+        if (!string.IsNullOrEmpty(level) && level != "All")
+        {
+            whereClause.Add("level = @level");
+            parameters.Add(new Npgsql.NpgsqlParameter("@level", level));
+        }
+        
+        // Filter by source context
+        if (!string.IsNullOrEmpty(source) && source != "All")
+        {
+            whereClause.Add("source_context LIKE @source");
+            parameters.Add(new Npgsql.NpgsqlParameter("@source", $"%{source}%"));
+        }
+        
+        // Search in message
+        if (!string.IsNullOrEmpty(search))
+        {
+            whereClause.Add("(message ILIKE @search OR exception ILIKE @search)");
+            parameters.Add(new Npgsql.NpgsqlParameter("@search", $"%{search}%"));
+        }
+        
+        var query = $@"
+            SELECT 
+                timestamp,
+                level,
+                source_context,
+                message,
+                exception,
+                properties
+            FROM logs
+            WHERE {string.Join(" AND ", whereClause)}
+            ORDER BY timestamp DESC
+            LIMIT {take} OFFSET {skip}";
+        
+        using var cmd = new Npgsql.NpgsqlCommand(query, conn);
+        cmd.Parameters.AddRange(parameters.ToArray());
+        
+        var logs = new List<object>();
+        using var reader = await cmd.ExecuteReaderAsync();
+        
+        while (await reader.ReadAsync())
+        {
+            logs.Add(new
+            {
+                timestamp = reader.GetDateTime(0),
+                level = reader.IsDBNull(1) ? null : reader.GetString(1),
+                source = reader.IsDBNull(2) ? null : reader.GetString(2),
+                message = reader.IsDBNull(3) ? null : reader.GetString(3),
+                exception = reader.IsDBNull(4) ? null : reader.GetString(4),
+                properties = reader.IsDBNull(5) ? null : reader.GetString(5)
+            });
+        }
+        
+        // Get total count
+        var countQuery = $@"
+            SELECT COUNT(*) 
+            FROM logs 
+            WHERE {string.Join(" AND ", whereClause)}";
+        
+        using var countCmd = new Npgsql.NpgsqlCommand(countQuery, conn);
+        countCmd.Parameters.AddRange(parameters.ToArray());
+        var total = Convert.ToInt32(await countCmd.ExecuteScalarAsync());
+        
+        return Results.Ok(new
+        {
+            logs,
+            total,
+            skip,
+            take
+        });
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "Failed to query logs");
+        return Results.Problem($"Failed to query logs: {ex.Message}");
+    }
+})
+.WithName("GetLogs")
+.WithTags("Logs");
+
 app.Run();
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Application terminated unexpectedly");
+}
+finally
+{
+    Log.CloseAndFlush();
+}
 
 // ============================================================================
 // DTOs

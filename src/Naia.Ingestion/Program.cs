@@ -4,6 +4,12 @@ using Naia.Ingestion;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+// Configure host options to allow longer startup (for data preloading)
+builder.Services.Configure<HostOptions>(options =>
+{
+    options.StartupTimeout = TimeSpan.FromMinutes(5); // Allow 5 minutes for replay worker to preload data
+});
+
 // Configure logging
 builder.Logging.AddConsole();
 builder.Logging.SetMinimumLevel(LogLevel.Information);

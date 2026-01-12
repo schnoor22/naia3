@@ -45,9 +45,6 @@ public class Worker : BackgroundService
         _logger.LogInformation("  The First Industrial Historian That Learns From You");
         _logger.LogInformation("═══════════════════════════════════════════════════════════════════");
         
-        // Wait a moment for other services to initialize
-        await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
-        
         // Create a scope for the pipeline (it has scoped dependencies)
         await using var scope = _scopeFactory.CreateAsyncScope();
         

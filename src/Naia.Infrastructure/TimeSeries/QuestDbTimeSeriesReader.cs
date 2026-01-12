@@ -105,6 +105,11 @@ public sealed class QuestDbTimeSeriesReader : ITimeSeriesReader, IAsyncDisposabl
             // Table doesn't exist yet - return empty
             _logger.LogDebug("Table {Table} does not exist yet", _options.TableName);
         }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reading historical data from QuestDB for point {PointId}", pointSequenceId);
+            throw;
+        }
         
         return results;
     }
@@ -144,6 +149,11 @@ public sealed class QuestDbTimeSeriesReader : ITimeSeriesReader, IAsyncDisposabl
         catch (NpgsqlException ex) when (ex.Message.Contains("does not exist"))
         {
             _logger.LogDebug("Table {Table} does not exist yet", _options.TableName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reading last value from QuestDB for point {PointId}: {Message}", pointSequenceId, ex.Message);
+            throw;
         }
         
         return null;
@@ -201,6 +211,11 @@ public sealed class QuestDbTimeSeriesReader : ITimeSeriesReader, IAsyncDisposabl
         catch (NpgsqlException ex) when (ex.Message.Contains("does not exist"))
         {
             _logger.LogDebug("Table {Table} does not exist yet", _options.TableName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reading aggregated data from QuestDB for point {PointId}: {Message}", pointSequenceId, ex.Message);
+            throw;
         }
         
         return null;
