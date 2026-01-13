@@ -44,6 +44,12 @@ This document clarifies the correct deployment paths for the NAIA system.
 - **Working directory**: `/opt/naia/publish`
 - **Entry point**: `/usr/bin/dotnet /opt/naia/publish/Naia.Api.dll`
 
+### NAIA Ingestion Worker
+- **Service file**: `/etc/systemd/system/naia-ingestion.service`
+- **Working directory**: `/opt/naia/publish-ingestion`
+- **Entry point**: `/usr/bin/dotnet /opt/naia/publish-ingestion/Naia.Ingestion.dll`
+- **Purpose**: Consumes Kafka messages and writes to QuestDB via ILP
+
 ## Deployment Workflows
 
 ### UI Only (Frontend Changes)

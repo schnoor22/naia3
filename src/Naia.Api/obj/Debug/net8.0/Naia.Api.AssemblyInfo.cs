@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Naia.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+3ab225ff027bffc4bdb1c297ccb6d53be10e2a27")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0543e2b2b7da1b0f830ec9a132c4420f6901d092")]
 [assembly: System.Reflection.AssemblyProductAttribute("Naia.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Naia.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

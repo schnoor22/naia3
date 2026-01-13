@@ -135,30 +135,52 @@ public sealed class QuestDbTimeSeriesReader : ITimeSeriesReader, IAsyncDisposabl
         
         await using var cmd = ds.CreateCommand(sql);
         
-        try
+        const int maxRetries = 3;
+        for (int attempt = 0; attempt < maxRetries; attempt++)
         {
-            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-            
-            if (await reader.ReadAsync(cancellationToken))
+            try
             {
-                return new DataPoint
+                await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+                
+                if (await reader.ReadAsync(cancellationToken))
                 {
-                    PointSequenceId = reader.GetInt64(1),
-                    PointName = $"point_{reader.GetInt64(1)}",
-                    Timestamp = reader.GetDateTime(0),
-                    Value = reader.GetDouble(2),
-                    Quality = (DataQuality)reader.GetInt32(3)
-                };
+                    return new DataPoint
+                    {
+                        PointSequenceId = reader.GetInt64(1),
+                        PointName = $"point_{reader.GetInt64(1)}",
+                        Timestamp = reader.GetDateTime(0),
+                        Value = reader.GetDouble(2),
+                        Quality = (DataQuality)reader.GetInt32(3)
+                    };
+                }
+                
+                // Successfully read (no data), exit retry loop
+                break;
             }
-        }
-        catch (NpgsqlException ex) when (ex.Message.Contains("does not exist"))
-        {
-            _logger.LogDebug("Table {Table} does not exist yet", _options.TableName);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error reading last value from QuestDB for point {PointId}: {Message}", pointSequenceId, ex.Message);
-            throw;
+            catch (NpgsqlException ex) when (ex.Message.Contains("does not exist"))
+            {
+                _logger.LogDebug("Table {Table} does not exist yet", _options.TableName);
+                break; // Don't retry for missing table
+            }
+            catch (EndOfStreamException ex) when (attempt < maxRetries - 1)
+            {
+                _logger.LogWarning(ex, "QuestDB connection interrupted for point {PointId}, retrying (attempt {Attempt}/{MaxRetries})", 
+                    pointSequenceId, attempt + 1, maxRetries);
+                await Task.Delay(TimeSpan.FromMilliseconds(100 * (attempt + 1)), cancellationToken);
+                continue; // Retry
+            }
+            catch (NpgsqlException ex) when (ex.InnerException is EndOfStreamException && attempt < maxRetries - 1)
+            {
+                _logger.LogWarning(ex, "QuestDB stream error for point {PointId}, retrying (attempt {Attempt}/{MaxRetries})", 
+                    pointSequenceId, attempt + 1, maxRetries);
+                await Task.Delay(TimeSpan.FromMilliseconds(100 * (attempt + 1)), cancellationToken);
+                continue; // Retry
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error reading last value from QuestDB for point {PointId}: {Message}", pointSequenceId, ex.Message);
+                throw;
+            }
         }
         
         return null;

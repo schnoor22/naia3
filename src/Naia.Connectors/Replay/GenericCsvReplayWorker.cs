@@ -47,6 +47,12 @@ public sealed class GenericCsvReplayWorker : BackgroundService
     
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (!_options.Enabled)
+        {
+            _logger.LogInformation("Generic CSV Replay is disabled");
+            return;
+        }
+        
         _logger.LogInformation("╔════════════════════════════════════════════════════════════════════╗");
         _logger.LogInformation("║   📊 MULTI-SITE CSV REPLAY - Industrial Data Pump                 ║");
         _logger.LogInformation("╠════════════════════════════════════════════════════════════════════╣");
