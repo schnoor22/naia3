@@ -103,6 +103,9 @@ public enum DataSourceType
     /// <summary>CSV file import</summary>
     CsvImport = 8,
     
+    /// <summary>Generic CSV replay (no hardcoded column mappings)</summary>
+    GenericCsvReplay = 13,
+    
     /// <summary>Kafka topic subscription</summary>
     Kafka = 9,
     
