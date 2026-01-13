@@ -115,7 +115,7 @@
 					target="_blank"
 					class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 hover:text-naia-500"
 				>
-					<Icon name="settings" size="16" />
+					⚙️
 					Hangfire Jobs
 				</a>
 				<!-- Version display -->
