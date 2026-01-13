@@ -5,7 +5,6 @@
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import ConnectionStatus from '$lib/components/ConnectionStatus.svelte';
 	import AuthGate from '$lib/components/AuthGate.svelte';
-	import Icon from '$lib/components/Icon.svelte';
 	import { pendingCount, connectionState } from '$lib/stores/signalr';
 	import { initializeSignalR } from '$lib/services/signalr';
 

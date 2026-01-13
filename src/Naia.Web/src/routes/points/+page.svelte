@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { searchPoints, getDataSources, getCurrentValue, getHistory, type Point, type DataSource, type HistoricalDataResponse } from '$lib/services/api';
-	import Icon from '$lib/components/Icon.svelte';
 
 	// Dynamically import Plotly only in browser (it uses 'self' which doesn't exist in SSR)
 	let Plotly: typeof import('plotly.js-dist-min') | null = null;

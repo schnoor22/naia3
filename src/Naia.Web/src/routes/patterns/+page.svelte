@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 	import { getPendingSuggestions, getSuggestion, approveSuggestion, rejectSuggestion, deferSuggestion, type Suggestion, type SuggestionDetail } from '$lib/services/api';
 	import { pendingCount, toasts } from '$lib/stores/signalr';
-	import Icon from '$lib/components/Icon.svelte';
 
 	let suggestions = $state<Suggestion[]>([]);
 	let totalSuggestions = $state(0);

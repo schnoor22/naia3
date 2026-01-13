@@ -3,7 +3,6 @@
 	import StatusCard from '$lib/components/StatusCard.svelte';
 	import MetricCard from '$lib/components/MetricCard.svelte';
 	import Toast from '$lib/components/Toast.svelte';
-	import Icon from '$lib/components/Icon.svelte';
 	import { getHealth, getPipelineMetrics, getIngestionStatus, getSuggestionStats, type HealthStatus, type PipelineMetrics, type SuggestionStats } from '$lib/services/api';
 	import { pendingCount } from '$lib/stores/signalr';
 

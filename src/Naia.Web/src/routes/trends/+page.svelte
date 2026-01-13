@@ -3,7 +3,6 @@
 	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
 	import { searchPoints, getPoint, getHistory, type Point, type HistoricalDataResponse } from '$lib/services/api';
-	import Icon from '$lib/components/Icon.svelte';
 
 	// Dynamically import Plotly only in browser
 	let Plotly: typeof import('plotly.js-dist-min') | null = null;
