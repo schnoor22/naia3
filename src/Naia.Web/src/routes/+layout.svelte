@@ -13,6 +13,16 @@
 	// Build info for version display
 	let buildInfo = $state<{ version: string; buildTimeDisplay: string; gitCommit?: string } | null>(null);
 
+	const iconMap: Record<string, string> = {
+		dashboard: '📊',
+		points: '📍',
+		trends: '📈',
+		patterns: '🔍',
+		ingestion: '📥',
+		stack: '🔧',
+		logs: '📄'
+	};
+
 	const navItems = [
 		{ href: '/', label: 'Dashboard', icon: 'dashboard' },
 		{ href: '/points', label: 'Point Browser', icon: 'points' },
