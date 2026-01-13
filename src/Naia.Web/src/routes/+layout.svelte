@@ -78,8 +78,8 @@
 					class:active
 					aria-label={item.label}
 				>
-					<span class="flex-shrink-0 w-6 h-6 flex items-center justify-center">
-						<Icon name={item.icon} class="w-5 h-5" />
+					<span class="flex-shrink-0 w-6 h-6 flex items-center justify-center text-lg">
+						{iconMap[item.icon] || '•'}
 					</span>
 					{#if sidebarOpen}
 						<span class="truncate">{item.label}</span>
