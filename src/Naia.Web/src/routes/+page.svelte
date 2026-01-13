@@ -81,9 +81,9 @@
 			</span>
 			<button onclick={loadData} class="btn btn-secondary btn-sm" disabled={loading}>
 				{#if loading}
-					<Icon name="spinner" size="16" />
+					
 				{:else}
-					<Icon name="refresh" size="16" />
+					
 				{/if}
 				Refresh
 			</button>
@@ -206,7 +206,7 @@
 			<a href="/points" class="card p-5 hover:shadow-lg transition-shadow group">
 				<div class="flex items-center gap-4">
 					<div class="p-3 bg-blue-500/10 rounded-lg group-hover:bg-blue-500/20 transition-colors">
-						<Icon name="points" size="24" class="text-blue-500" />
+						
 					</div>
 					<div>
 						<h3 class="font-semibold text-gray-900 dark:text-gray-100">Browse Points</h3>
@@ -218,7 +218,7 @@
 			<a href="/trends" class="card p-5 hover:shadow-lg transition-shadow group">
 				<div class="flex items-center gap-4">
 					<div class="p-3 bg-emerald-500/10 rounded-lg group-hover:bg-emerald-500/20 transition-colors">
-						<Icon name="trends" size="24" class="text-emerald-500" />
+						
 					</div>
 					<div>
 						<h3 class="font-semibold text-gray-900 dark:text-gray-100">View Trends</h3>
@@ -230,7 +230,7 @@
 			<a href="/patterns" class="card p-5 hover:shadow-lg transition-shadow group">
 				<div class="flex items-center gap-4">
 					<div class="p-3 bg-purple-500/10 rounded-lg group-hover:bg-purple-500/20 transition-colors">
-						<Icon name="patterns" size="24" class="text-purple-500" />
+						
 					</div>
 					<div class="flex-1">
 						<div class="flex items-center gap-2">
@@ -249,12 +249,12 @@
 			<a href="http://app.naia.run:9000" target="_blank" rel="noopener noreferrer" class="card p-5 hover:shadow-lg transition-shadow group">
 				<div class="flex items-center gap-4">
 					<div class="p-3 bg-orange-500/10 rounded-lg group-hover:bg-orange-500/20 transition-colors">
-						<Icon name="stack" size="24" class="text-orange-500" />
+						
 					</div>
 					<div>
 						<h3 class="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
 							QuestDB Console
-							<Icon name="external" size="12" />
+							
 						</h3>
 						<p class="text-sm text-gray-500 dark:text-gray-400">Query raw time-series data</p>
 					</div>
@@ -299,7 +299,7 @@
 						</div>
 					</div>
 					
-					<Icon name="arrow-right" size="20" class="text-gray-400" />
+					
 
 					<!-- Kafka -->
 					<div class="flex items-center gap-2 px-4 py-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
@@ -310,7 +310,7 @@
 						{/if}
 					</div>
 
-					<Icon name="arrow-right" size="20" class="text-gray-400" />
+					
 
 					<!-- Ingestion Worker -->
 					<div class="flex items-center gap-2 px-4 py-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
@@ -321,7 +321,7 @@
 						{/if}
 					</div>
 
-					<Icon name="arrow-right" size="20" class="text-gray-400" />
+					
 
 					<!-- Storage -->
 					<div class="flex flex-col gap-2">
@@ -353,7 +353,7 @@
 					</div>
 
 					<!-- Arrow to Engine -->
-					<Icon name="arrow-right" size="24" class="text-naia-500" />
+					
 
 					<!-- Center Pattern Engine -->
 					<div class="relative">
@@ -372,7 +372,7 @@
 					</div>
 
 					<!-- Arrow from Engine -->
-					<Icon name="arrow-right" size="24" class="text-naia-500" />
+					
 
 					<!-- Output: Suggestions -->
 					<div class="flex flex-col gap-2 items-center">

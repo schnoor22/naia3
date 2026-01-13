@@ -139,8 +139,8 @@
 			onclick={() => sidebarOpen = !sidebarOpen}
 			class="absolute top-20 -right-3 w-6 h-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full flex items-center justify-center shadow-sm hover:shadow-md transition-shadow"
 		>
-			<span class="transition-transform" class:rotate-180={!sidebarOpen}>
-				<Icon name="chevron-left" size="16" class="text-gray-500" />
+			<span class="transition-transform text-lg" class:rotate-180={!sidebarOpen}>
+				◀
 			</span>
 		</button>
 	</aside>
