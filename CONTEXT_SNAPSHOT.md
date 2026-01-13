@@ -1,5 +1,5 @@
 ﻿# NAIA Context Snapshot
-**Generated**: 2026-01-12 23:00:59
+**Generated**: 2026-01-13 09:15:43
 **Purpose**: Paste this entire file to your AI assistant for instant project context
 
 ---
@@ -57,24 +57,10 @@ USER/BROWSER --> CADDY (app.naia.run:443) --> NAIA.API (:5000)
 ---
 
 ## Local Git Status
-**Branch**: main | **Commit**: 3ab225f | **Changed Files**: 67
+**Branch**: main | **Commit**: 5ad75b7 | **Changed Files**: 0
 
 ```
- M DOCUMENTATION_INDEX.md
- M init-scripts/postgres/01-init-schema.sql
- M src/Naia.Api/Program.cs
- M src/Naia.Api/obj/Debug/net8.0/Naia.Api.AssemblyInfo.cs
- M src/Naia.Api/obj/Debug/net8.0/Naia.Api.AssemblyInfoInputs.cache
- M src/Naia.Application/Abstractions/IPointLookupService.cs
- M src/Naia.Application/obj/Debug/net8.0/Naia.Application.AssemblyInfo.cs
- M src/Naia.Application/obj/Debug/net8.0/Naia.Application.AssemblyInfoInputs.cache
- M src/Naia.Connectors/ServiceCollectionExtensions.cs
- M src/Naia.Connectors/obj/Debug/net8.0/Naia.Connectors.AssemblyInfo.cs
- M src/Naia.Connectors/obj/Debug/net8.0/Naia.Connectors.AssemblyInfoInputs.cache
- M src/Naia.Domain/obj/Debug/net8.0/Naia.Domain.AssemblyInfo.cs
- M src/Naia.Domain/obj/Debug/net8.0/Naia.Domain.AssemblyInfoInputs.cache
- M src/Naia.Infrastructure/Persistence/PointLookupService.cs
- M src/Naia.Infrastructure/Pipeline/IngestionPipeline.cs
+Working tree clean
 ```
 
 ---
@@ -87,12 +73,36 @@ naia@37.27.189.86: Permission denied (publickey,password).
 
 ## API Health
 ```json
-"\u003c!doctype html\u003e\n\u003chtml lang=\"en\" class=\"dark\"\u003e\n\t\u003chead\u003e\n\t\t\u003cmeta charset=\"utf-8\" /\u003e\n\t\t\u003clink rel=\"icon\" href=\"/favicon.png\" /\u003e\n\t\t\u003cmeta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /\u003e\n\t\t\u003cmeta name=\"description\" content=\"NAIA Industrial AI Framework - The First Historian That Learns From You\" /\u003e\n\t\t\u003clink rel=\"preconnect\" href=\"https://fonts.googleapis.com\"\u003e\n\t\t\u003clink rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin\u003e\n\t\t\u003clink href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700\u0026family=JetBrains+Mono:wght@400;500\u0026display=swap\" rel=\"stylesheet\"\u003e\n\t\t\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/entry/start.4Wm8VO20.js\"\u003e\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/chunks/BeFGrokg.js\"\u003e\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/chunks/CMoxswSl.js\"\u003e\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/chunks/DnZeFeAf.js\"\u003e\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/entry/app.BBlpOiXl.js\"\u003e\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/chunks/Dyrg4-m5.js\"\u003e\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/chunks/DBwLsdZZ.js\"\u003e\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/chunks/BJTlkxqz.js\"\u003e\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/chunks/CLB420GD.js\"\u003e\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/chunks/BHReAqjr.js\"\u003e\n\t\u003c/head\u003e\n\t\u003cbody data-sveltekit-preload-data=\"hover\" class=\"bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100\"\u003e\n\t\t\u003cdiv style=\"display: contents\"\u003e\n\t\t\t\u003cscript\u003e\n\t\t\t\t{\n\t\t\t\t\t__sveltekit_n7k6fp = {\n\t\t\t\t\t\tbase: \"\"\n\t\t\t\t\t};\n\n\t\t\t\t\tconst element = document.currentScript.parentElement;\n\n\t\t\t\t\tPromise.all([\n\t\t\t\t\t\timport(\"/_app/immutable/entry/start.4Wm8VO20.js\"),\n\t\t\t\t\t\timport(\"/_app/immutable/entry/app.BBlpOiXl.js\")\n\t\t\t\t\t]).then(([kit, app]) =\u003e {\n\t\t\t\t\t\tkit.start(app, element);\n\t\t\t\t\t});\n\t\t\t\t}\n\t\t\t\u003c/script\u003e\n\t\t\u003c/div\u003e\n\t\u003c/body\u003e\n\u003c/html\u003e\n"
+{
+    "status":  "healthy",
+    "checks":  {
+                   "postgresql":  {
+                                      "status":  "healthy"
+                                  },
+                   "questdb":  {
+                                   "status":  "healthy"
+                               },
+                   "redis":  {
+                                 "status":  "healthy"
+                             }
+               },
+    "timestamp":  "2026-01-13T17:15:46.3030372Z"
+}
 ```
 
 ## API Version
 ```json
-"\u003c!doctype html\u003e\n\u003chtml lang=\"en\" class=\"dark\"\u003e\n\t\u003chead\u003e\n\t\t\u003cmeta charset=\"utf-8\" /\u003e\n\t\t\u003clink rel=\"icon\" href=\"/favicon.png\" /\u003e\n\t\t\u003cmeta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /\u003e\n\t\t\u003cmeta name=\"description\" content=\"NAIA Industrial AI Framework - The First Historian That Learns From You\" /\u003e\n\t\t\u003clink rel=\"preconnect\" href=\"https://fonts.googleapis.com\"\u003e\n\t\t\u003clink rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin\u003e\n\t\t\u003clink href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700\u0026family=JetBrains+Mono:wght@400;500\u0026display=swap\" rel=\"stylesheet\"\u003e\n\t\t\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/entry/start.4Wm8VO20.js\"\u003e\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/chunks/BeFGrokg.js\"\u003e\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/chunks/CMoxswSl.js\"\u003e\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/chunks/DnZeFeAf.js\"\u003e\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/entry/app.BBlpOiXl.js\"\u003e\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/chunks/Dyrg4-m5.js\"\u003e\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/chunks/DBwLsdZZ.js\"\u003e\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/chunks/BJTlkxqz.js\"\u003e\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/chunks/CLB420GD.js\"\u003e\n\t\t\u003clink rel=\"modulepreload\" href=\"/_app/immutable/chunks/BHReAqjr.js\"\u003e\n\t\u003c/head\u003e\n\t\u003cbody data-sveltekit-preload-data=\"hover\" class=\"bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100\"\u003e\n\t\t\u003cdiv style=\"display: contents\"\u003e\n\t\t\t\u003cscript\u003e\n\t\t\t\t{\n\t\t\t\t\t__sveltekit_n7k6fp = {\n\t\t\t\t\t\tbase: \"\"\n\t\t\t\t\t};\n\n\t\t\t\t\tconst element = document.currentScript.parentElement;\n\n\t\t\t\t\tPromise.all([\n\t\t\t\t\t\timport(\"/_app/immutable/entry/start.4Wm8VO20.js\"),\n\t\t\t\t\t\timport(\"/_app/immutable/entry/app.BBlpOiXl.js\")\n\t\t\t\t\t]).then(([kit, app]) =\u003e {\n\t\t\t\t\t\tkit.start(app, element);\n\t\t\t\t\t});\n\t\t\t\t}\n\t\t\t\u003c/script\u003e\n\t\t\u003c/div\u003e\n\t\u003c/body\u003e\n\u003c/html\u003e\n"
+{
+    "version":  "3.0.0",
+    "apiVersion":  "1.0.0.0",
+    "buildDate":  "2026-01-13 07:58:05 UTC",
+    "apiStartTime":  "2026-01-13 08:16:17 UTC",
+    "uptime":  "0.08:59:28",
+    "environment":  "Production",
+    "machineName":  "ubuntu-16gb-hel1-1",
+    "dotnetVersion":  "8.0.22",
+    "timestamp":  "2026-01-13T17:15:46.6149546Z"
+}
 ```
 
 ## Docker Containers

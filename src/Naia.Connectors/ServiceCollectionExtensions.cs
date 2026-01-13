@@ -149,9 +149,12 @@ public static class ServiceCollectionExtensions
         
         // Generic CSV Replay Connector (Multi-site industrial data)
         var genericCsvEnabled = configuration.GetValue<bool>("Connectors:GenericCsvReplay:Enabled", false);
+        Console.WriteLine($"[STARTUP] GenericCsvReplay.Enabled = {genericCsvEnabled}");
         if (genericCsvEnabled)
         {
+            Console.WriteLine("[STARTUP] Registering GenericCsvReplayWorker...");
             services.AddGenericCsvReplayConnector(configuration.GetSection("Connectors"));
+            Console.WriteLine("[STARTUP] GenericCsvReplayWorker registered!");
         }
         
         // OPC UA Simulator Connector
