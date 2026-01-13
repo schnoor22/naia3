@@ -321,7 +321,7 @@
 						onkeydown={(e) => e.key === 'Enter' && handleSearch()}
 					/>
 					<span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-						<Icon name="search" size="20" />
+						
 					</span>
 				</div>
 			</div>
@@ -453,7 +453,7 @@
 										onclick={() => openTrend(point)}
 										title="View trend"
 									>
-										<Icon name="trends" size="16" />
+										
 										Trend
 									</button>
 								</td>
@@ -508,7 +508,7 @@
 					onclick={closeTrend}
 					aria-label="Close trend modal"
 				>
-					<Icon name="close" size="20" />
+					
 				</button>
 			</div>
 			
@@ -536,7 +536,7 @@
 				{#if trendLoading}
 					<div class="h-64 flex items-center justify-center">
 						<div class="flex flex-col items-center gap-2 text-gray-400">
-							<Icon name="spinner" size="32" class="text-naia-500" />
+							
 							<span>Loading trend data...</span>
 						</div>
 					</div>
@@ -544,7 +544,7 @@
 					<div class="h-64 flex items-center justify-center">
 						<div class="text-center">
 							<div class="text-red-400 mb-2">
-								<Icon name="warning" size="48" class="mx-auto" />
+								
 							</div>
 							<p class="text-red-400 font-medium">{trendError}</p>
 							<button class="mt-2 text-sm text-teal-500 hover:underline" onclick={loadTrendData}>Retry</button>
@@ -578,7 +578,7 @@
 				{:else}
 					<div class="h-64 flex items-center justify-center">
 						<div class="text-center text-gray-400">
-							<Icon name="trends" size="48" class="mx-auto mb-2 opacity-50" />
+							
 							<p>No data available for this time range</p>
 							<p class="text-sm mt-1">Try selecting a different time range or check if data is being collected</p>
 						</div>

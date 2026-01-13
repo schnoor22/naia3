@@ -162,7 +162,7 @@
 			<p class="text-gray-500 dark:text-gray-400">Review and approve AI-detected patterns to help NAIA learn</p>
 		</div>
 		<button class="btn btn-secondary" onclick={loadSuggestions} disabled={loading}>
-			<Icon name="refresh" size="16" />
+			
 			Refresh
 		</button>
 	</div>
@@ -177,7 +177,7 @@
 	<div class="card p-4 bg-naia-500/5 border-naia-500/20">
 		<div class="flex items-start gap-3">
 			<div class="p-2 bg-naia-500/10 rounded-lg">
-				<Icon name="patterns" size="20" class="text-naia-500" />
+				
 			</div>
 			<div>
 				<h3 class="font-medium text-gray-900 dark:text-gray-100">How Pattern Learning Works</h3>
@@ -208,7 +208,7 @@
 	{:else if !suggestions || !Array.isArray(suggestions) || suggestions.length === 0}
 			<div class="card p-12 text-center">
 				<div class="mx-auto w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
-					<Icon name="check" size="32" class="text-gray-400" />
+					
 				</div>
 				<h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">All caught up!</h3>
 				<p class="text-gray-500 dark:text-gray-400 mt-1">
@@ -235,7 +235,7 @@
 									{formatConfidence(suggestion.confidence)}
 								</div>
 							</div>
-							<Icon name="chevron-right" size="20" class="text-gray-400" />
+							
 						</div>
 					</div>
 				</button>
@@ -250,7 +250,7 @@
 		<div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-2xl m-4 max-h-[90vh] overflow-hidden" onclick={(e) => e.stopPropagation()}>
 			{#if loadingDetail}
 				<div class="p-8 text-center">
-					<Icon name="spinner" size="32" class="mx-auto text-naia-500" />
+					
 					<p class="mt-2 text-gray-500">Loading details...</p>
 				</div>
 			{:else if selectedSuggestion && selectedSuggestion.id}
@@ -265,7 +265,7 @@
 						onclick={() => selectedSuggestion = null}
 						disabled={!!processingAction}
 					>
-						<Icon name="close" size="20" />
+						
 					</button>
 				</div>
 
@@ -370,7 +370,7 @@
 						disabled={!!processingAction}
 					>
 						{#if processingAction === 'defer'}
-							<Icon name="spinner" size="16" />
+							
 						{/if}
 						Defer
 					</button>
@@ -380,7 +380,7 @@
 						disabled={!!processingAction}
 					>
 						{#if processingAction === 'reject'}
-							<Icon name="spinner" size="16" />
+							
 						{/if}
 						Reject
 					</button>
@@ -390,7 +390,7 @@
 						disabled={!!processingAction}
 					>
 						{#if processingAction === 'approve'}
-							<Icon name="spinner" size="16" />
+							
 						{/if}
 						Approve
 					</button>

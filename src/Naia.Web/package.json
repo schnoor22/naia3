@@ -25,6 +25,7 @@
     "vite": "^5.0.10"
   },
   "dependencies": {
+    "@iconify/svelte": "^5.2.1",
     "@microsoft/signalr": "^8.0.0",
     "echarts": "^5.4.3",
     "plotly.js-dist-min": "^3.3.1"

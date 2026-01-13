@@ -397,7 +397,7 @@
 								onclick={() => removePoint(point)}
 								title="Remove"
 							>
-								<Icon name="close" size="14" />
+								
 							</button>
 						</span>
 					{/each}
@@ -409,7 +409,7 @@
 									{showSearch ? 'border-naia-500 text-naia-500 bg-naia-500/10' : 'border-gray-400 dark:border-gray-600 text-gray-500 hover:border-naia-500 hover:text-naia-500'}"
 								onclick={() => showSearch ? closeSearch() : openSearch()}
 							>
-								<Icon name="add" size="16" />
+								
 								Add Tag
 								<span class="text-xs opacity-60">({selectedPoints.length}/8)</span>
 							</button>
@@ -428,7 +428,7 @@
 									<div class="max-h-80 overflow-y-auto">
 										{#if searchLoading}
 											<div class="p-6 text-center text-gray-500">
-												<Icon name="spinner" size="24" class="mx-auto mb-2" />
+												
 												Loading tags...
 											</div>
 										{:else if searchResults.length > 0}
@@ -451,7 +451,7 @@
 											{/each}
 										{:else}
 											<div class="p-6 text-center text-gray-500">
-												<Icon name="search" size="32" class="mx-auto mb-2 opacity-50" />
+												
 												{#if searchQuery}
 													No tags found for "{searchQuery}"
 												{:else}
@@ -499,13 +499,13 @@
 		{#if loading}
 			<div class="flex items-center justify-center h-[450px] bg-gray-900/30">
 				<div class="flex flex-col items-center gap-3 text-gray-400">
-					<Icon name="spinner" size="32" class="text-naia-500" />
+					
 					<span>Loading trend data...</span>
 				</div>
 			</div>
 		{:else if selectedPoints.length === 0}
 			<div class="flex flex-col items-center justify-center h-[450px] text-gray-500 bg-gray-900/20">
-				<Icon name="trends" size="64" class="mb-4 opacity-30" />
+				
 				<p class="text-lg font-medium mb-1">No Tags Selected</p>
 				<p class="text-sm opacity-75">Click "Add Tag" to select historian points to trend</p>
 			</div>
