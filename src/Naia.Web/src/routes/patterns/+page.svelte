@@ -8,6 +8,10 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
+	onMount(() => {
+		loadSuggestions();
+	});
+
 	// Detail view
 	let selectedSuggestion = $state<SuggestionDetail | null>(null);
 	let loadingDetail = $state(false);
@@ -127,10 +131,6 @@
 		if (confidence >= 0.6) return 'text-amber-500';
 		return 'text-red-500';
 	}
-
-	onMount(() => {
-		loadSuggestions();
-	});
 </script>
 
 <div class="space-y-6">
@@ -188,7 +188,7 @@
 					</div>
 				</div>
 			{/each}
-		{:else if suggestions.length === 0}
+		{:else if !suggestions || suggestions.length === 0}
 			<div class="card p-12 text-center">
 				<div class="mx-auto w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
 					<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8 text-gray-400">
@@ -200,7 +200,7 @@
 					No pending suggestions to review. New suggestions will appear as NAIA detects patterns in your data.
 				</p>
 			</div>
-		{:else}
+		{:else if suggestions && suggestions.length > 0}
 			{#each suggestions as suggestion}
 				<button 
 					class="card p-4 text-left hover:shadow-lg transition-shadow w-full"
