@@ -340,6 +340,23 @@ public sealed class ClusterDetectionJob : IClusterDetectionJob
         await using var conn = new NpgsqlConnection(_postgresConnectionString);
         await conn.OpenAsync(cancellationToken);
 
+        // Fetch point names for the cluster
+        var pointNamesSql = "SELECT id, name FROM points WHERE id = ANY(@PointIds) ORDER BY id";
+        var pointNamesCmd = new NpgsqlCommand(pointNamesSql, conn);
+        pointNamesCmd.Parameters.AddWithValue("@PointIds", cluster.PointIds.ToArray());
+        
+        var pointNameMap = new Dictionary<Guid, string>();
+        await using var reader = await pointNamesCmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            pointNameMap[reader.GetGuid(0)] = reader.GetString(1);
+        }
+
+        // Map point IDs to their names in order
+        var pointNames = cluster.PointIds
+            .Select(id => pointNameMap.ContainsKey(id) ? pointNameMap[id] : id.ToString())
+            .ToArray();
+
         // Check if cluster exists
         var checkSql = "SELECT id, cohesion FROM behavioral_clusters WHERE id = @Id";
         await using var checkCmd = new NpgsqlCommand(checkSql, conn);
@@ -351,15 +368,17 @@ public sealed class ClusterDetectionJob : IClusterDetectionJob
 
         if (created)
         {
-            // Insert new cluster
+            // Insert new cluster with point_count and point_names
             var insertSql = @"
-                INSERT INTO behavioral_clusters (id, member_point_ids, cohesion, detected_at, is_active, algorithm, average_cohesion)
-                VALUES (@Id, @MemberPointIds::jsonb, @Cohesion, @DetectedAt, true, 'correlation', @Cohesion)
+                INSERT INTO behavioral_clusters (id, point_ids, point_names, point_count, cohesion, detected_at, is_active, source_type, average_correlation)
+                VALUES (@Id, @PointIds, @PointNames, @PointCount, @Cohesion, @DetectedAt, true, 'correlation', @Cohesion)
             ";
 
             await using var insertCmd = new NpgsqlCommand(insertSql, conn);
             insertCmd.Parameters.AddWithValue("@Id", cluster.Id);
-            insertCmd.Parameters.AddWithValue("@MemberPointIds", System.Text.Json.JsonSerializer.Serialize(cluster.PointIds));
+            insertCmd.Parameters.AddWithValue("@PointIds", cluster.PointIds.ToArray());
+            insertCmd.Parameters.AddWithValue("@PointNames", pointNames);
+            insertCmd.Parameters.AddWithValue("@PointCount", cluster.PointIds.Count);
             insertCmd.Parameters.AddWithValue("@Cohesion", cluster.Cohesion);
             insertCmd.Parameters.AddWithValue("@DetectedAt", cluster.DetectedAt);
 
@@ -370,17 +389,19 @@ public sealed class ClusterDetectionJob : IClusterDetectionJob
         }
         else
         {
-            // Update existing cluster
+            // Update existing cluster with point_count and point_names
             var updateSql = @"
                 UPDATE behavioral_clusters
-                SET point_ids = @PointIds, cohesion = @Cohesion, 
-                    detected_at = @DetectedAt, is_active = true
+                SET point_ids = @PointIds, point_names = @PointNames, point_count = @PointCount, 
+                    cohesion = @Cohesion, detected_at = @DetectedAt, is_active = true
                 WHERE id = @Id
             ";
 
             await using var updateCmd = new NpgsqlCommand(updateSql, conn);
             updateCmd.Parameters.AddWithValue("@Id", cluster.Id);
             updateCmd.Parameters.AddWithValue("@PointIds", cluster.PointIds.ToArray());
+            updateCmd.Parameters.AddWithValue("@PointNames", pointNames);
+            updateCmd.Parameters.AddWithValue("@PointCount", cluster.PointIds.Count);
             updateCmd.Parameters.AddWithValue("@Cohesion", cluster.Cohesion);
             updateCmd.Parameters.AddWithValue("@DetectedAt", cluster.DetectedAt);
 

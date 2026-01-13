@@ -29,7 +29,7 @@ public class SuggestionRepository : ISuggestionRepository
         var sql = @"
             SELECT 
                 s.id, s.cluster_id, s.pattern_id, p.name as pattern_name,
-                s.overall_confidence, c.point_count, s.status, s.created_at, c.common_prefix
+                s.overall_confidence, COALESCE(c.point_count, array_length(c.point_ids, 1)), s.status, s.created_at, c.common_prefix
             FROM pattern_suggestions s
             JOIN patterns p ON s.pattern_id = p.id
             JOIN behavioral_clusters c ON s.cluster_id = c.id
@@ -56,7 +56,7 @@ public class SuggestionRepository : ISuggestionRepository
                 PatternId = reader.GetGuid(2),
                 PatternName = reader.GetString(3),
                 Confidence = reader.GetDouble(4),
-                PointCount = reader.GetInt32(5),
+                PointCount = reader.IsDBNull(5) ? 0 : reader.GetInt32(5),
                 Status = Enum.Parse<SuggestionStatus>(reader.GetString(6), true),
                 CreatedAt = reader.GetDateTime(7),
                 CommonPrefix = reader.IsDBNull(8) ? null : reader.GetString(8)
@@ -72,7 +72,7 @@ public class SuggestionRepository : ISuggestionRepository
             SELECT 
                 s.id, s.cluster_id, s.pattern_id, p.name as pattern_name,
                 s.overall_confidence, s.naming_score, s.correlation_score, s.range_score, s.rate_score,
-                c.point_count, s.status, s.created_at, c.common_prefix, s.reason,
+                COALESCE(c.point_count, array_length(c.point_ids, 1)), s.status, s.created_at, c.common_prefix, s.reason,
                 c.point_ids, c.point_names
             FROM pattern_suggestions s
             JOIN patterns p ON s.pattern_id = p.id
@@ -85,65 +85,48 @@ public class SuggestionRepository : ISuggestionRepository
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("id", suggestionId);
         
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
-        if (!await reader.ReadAsync(ct))
-            return null;
-
-        var pointIds = (Guid[])reader.GetValue(14);
-        var pointNames = (string[])reader.GetValue(15);
-
-        var points = pointIds.Zip(pointNames, (id, name) => new SuggestionPointDto
+        using (var reader = await cmd.ExecuteReaderAsync(ct))
         {
-            PointId = id,
-            PointName = name,
-            SuggestedRole = null, // TODO: Match roles
-            RoleConfidence = null
-        }).ToList();
+            if (!await reader.ReadAsync(ct))
+                return null;
 
-        // Get expected roles
-        var rolesSql = @"
-            SELECT id, name, description, naming_patterns, expected_min, expected_max, expected_units, is_required
-            FROM pattern_roles WHERE pattern_id = @patternId";
-        
-        var roles = new List<PatternRoleDto>();
-        await using var rolesCmd = new NpgsqlCommand(rolesSql, conn);
-        rolesCmd.Parameters.AddWithValue("patternId", reader.GetGuid(2));
-        
-        await using var rolesReader = await rolesCmd.ExecuteReaderAsync(ct);
-        while (await rolesReader.ReadAsync(ct))
-        {
-            roles.Add(new PatternRoleDto
+            var pointIds = (Guid[])reader.GetValue(14);
+            var pointNames = reader.IsDBNull(15) ? new string[pointIds.Length] : (string[])reader.GetValue(15);
+            
+            // Ensure we have names for all point IDs
+            if (pointNames.Length != pointIds.Length)
             {
-                Id = rolesReader.GetGuid(0),
-                Name = rolesReader.GetString(1),
-                Description = rolesReader.IsDBNull(2) ? "" : rolesReader.GetString(2),
-                NamingPatterns = ((string[])rolesReader.GetValue(3)).ToList(),
-                ExpectedMinValue = rolesReader.IsDBNull(4) ? null : rolesReader.GetDouble(4),
-                ExpectedMaxValue = rolesReader.IsDBNull(5) ? null : rolesReader.GetDouble(5),
-                ExpectedUnits = rolesReader.IsDBNull(6) ? null : rolesReader.GetString(6),
-                IsRequired = rolesReader.GetBoolean(7)
-            });
-        }
+                pointNames = pointIds.Select((_, i) => i < pointNames.Length ? pointNames[i] : "").ToArray();
+            }
 
-        return new SuggestionDetailDto
-        {
-            Id = reader.GetGuid(0),
-            ClusterId = reader.GetGuid(1),
-            PatternId = reader.GetGuid(2),
-            PatternName = reader.GetString(3),
-            Confidence = reader.GetDouble(4),
-            NamingScore = reader.GetDouble(5),
-            CorrelationScore = reader.GetDouble(6),
-            RangeScore = reader.GetDouble(7),
-            RateScore = reader.GetDouble(8),
-            PointCount = reader.GetInt32(9),
-            Status = Enum.Parse<SuggestionStatus>(reader.GetString(10), true),
-            CreatedAt = reader.GetDateTime(11),
-            CommonPrefix = reader.IsDBNull(12) ? null : reader.GetString(12),
-            Reason = reader.GetString(13),
-            Points = points,
-            ExpectedRoles = roles
-        };
+            var points = pointIds.Zip(pointNames, (id, name) => new SuggestionPointDto
+            {
+                PointId = id,
+                PointName = name,
+                SuggestedRole = null,
+                RoleConfidence = null
+            }).ToList();
+
+            return new SuggestionDetailDto
+            {
+                Id = reader.GetGuid(0),
+                ClusterId = reader.GetGuid(1),
+                PatternId = reader.GetGuid(2),
+                PatternName = reader.GetString(3),
+                Confidence = reader.GetDouble(4),
+                NamingScore = reader.GetDouble(5),
+                CorrelationScore = reader.GetDouble(6),
+                RangeScore = reader.GetDouble(7),
+                RateScore = reader.GetDouble(8),
+                PointCount = reader.GetInt32(9),
+                Status = Enum.Parse<SuggestionStatus>(reader.GetString(10), true),
+                CreatedAt = reader.GetDateTime(11),
+                CommonPrefix = reader.IsDBNull(12) ? null : reader.GetString(12),
+                Reason = reader.GetString(13),
+                Points = points,
+                Roles = new List<PatternRoleDto>()
+            };
+        }
     }
 
     public async Task<IReadOnlyList<SuggestionDto>> GetByClusterIdAsync(Guid clusterId, CancellationToken ct = default)
