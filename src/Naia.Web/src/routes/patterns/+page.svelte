@@ -243,7 +243,7 @@
 					</svg>
 					<p class="mt-2 text-gray-500">Loading details...</p>
 				</div>
-			{:else if selectedSuggestion}
+			{:else if selectedSuggestion && selectedSuggestion.id}
 				<!-- Header -->
 				<div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800">
 					<div>
@@ -328,9 +328,9 @@
 							<div class="space-y-2">
 								{#each selectedSuggestion.expectedRoles as role}
 									<div class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-										<div class="font-medium text-sm">{role.name}</div>
-										<div class="text-xs text-gray-500 mt-1">{role.description}</div>
-										{#if role.namingPatterns.length > 0}
+										<div class="font-medium text-sm">{role?.name || 'Unknown'}</div>
+										<div class="text-xs text-gray-500 mt-1">{role?.description || ''}</div>
+										{#if role?.namingPatterns && role.namingPatterns.length > 0}
 											<div class="text-xs text-gray-400 mt-1">Patterns: {role.namingPatterns.join(', ')}</div>
 										{/if}
 									</div>
