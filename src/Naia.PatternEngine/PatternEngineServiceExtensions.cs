@@ -39,8 +39,14 @@ public static class PatternEngineServiceExtensions
         var postgresConnection = configuration.GetConnectionString("PostgreSQL") 
             ?? configuration.GetConnectionString("PostgreSql")
             ?? "Host=localhost;Database=naia;Username=naia;Password=naia_dev_password";
-        var questDbConnection = configuration.GetConnectionString("QuestDB")
-            ?? "Host=localhost;Port=8812;Database=qdb;Username=admin;Password=quest";
+        
+        // Build QuestDB connection string from QuestDb config section (same as QuestDbTimeSeriesReader)
+        var questDbSection = configuration.GetSection("QuestDb");
+        var pgWireEndpoint = questDbSection["PgWireEndpoint"] ?? "localhost:8812";
+        var endpointParts = pgWireEndpoint.Split(':');
+        var questHost = endpointParts[0];
+        var questPort = endpointParts.Length > 1 ? endpointParts[1] : "8812";
+        var questDbConnection = $"Host={questHost};Port={questPort};Database=qdb;Username=admin;Password=quest";
         
         // QuestDB doesn't have PostgreSQL system catalogs - configure Npgsql compatibility mode
         if (!questDbConnection.Contains("Server Compatibility Mode", StringComparison.OrdinalIgnoreCase))
