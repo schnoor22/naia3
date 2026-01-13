@@ -301,9 +301,9 @@
 
 					<!-- Matched Points -->
 					<div>
-						<h4 class="font-medium text-gray-900 dark:text-gray-100 mb-2">Matched Points ({selectedSuggestion.points.length})</h4>
+						<h4 class="font-medium text-gray-900 dark:text-gray-100 mb-2">Matched Points ({selectedSuggestion.points?.length || 0})</h4>
 						<div class="space-y-2">
-							{#each selectedSuggestion.points as match}
+							{#each selectedSuggestion.points || [] as match}
 								<div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
 									<div>
 										<div class="font-mono text-sm">{match.pointName}</div>
@@ -322,7 +322,7 @@
 					</div>
 
 					<!-- Expected Roles -->
-					{#if selectedSuggestion.expectedRoles.length > 0}
+					{#if selectedSuggestion.expectedRoles && selectedSuggestion.expectedRoles.length > 0}
 						<div>
 							<h4 class="font-medium text-gray-900 dark:text-gray-100 mb-2">Expected Pattern Roles</h4>
 							<div class="space-y-2">
