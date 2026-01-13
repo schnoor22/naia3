@@ -124,7 +124,7 @@ public class SuggestionRepository : ISuggestionRepository
                 CommonPrefix = reader.IsDBNull(12) ? null : reader.GetString(12),
                 Reason = reader.GetString(13),
                 Points = points,
-                Roles = new List<PatternRoleDto>()
+                ExpectedRoles = new List<PatternRoleDto>()
             };
         }
     }
