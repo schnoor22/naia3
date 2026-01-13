@@ -208,6 +208,17 @@ public sealed class PIDataIngestionService : IAsyncDisposable
     /// </summary>
     private async Task IngestionLoopAsync(CancellationToken cancellationToken)
     {
+        // Check if PI connector is available before starting loop
+        using (var scope = _scopeFactory.CreateScope())
+        {
+            var connector = scope.ServiceProvider.GetService<PIWebApiConnector>() as ICurrentValueConnector;
+            if (connector == null || !connector.IsAvailable)
+            {
+                _logger.LogInformation("PI connector not configured - ingestion loop disabled. Use replay worker for data ingestion.");
+                return; // Exit immediately, don't poll
+            }
+        }
+        
         var pollIntervalMs = _configuration.GetValue("PIWebApi:PollIntervalMs", 5000);
         
         _logger.LogInformation("Ingestion loop starting - poll interval: {Interval}ms", pollIntervalMs);

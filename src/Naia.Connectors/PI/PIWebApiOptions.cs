@@ -10,6 +10,11 @@ public sealed class PIWebApiOptions
     public const string SectionName = "PIWebApi";
     
     /// <summary>
+    /// Whether to enable PI Web API integration
+    /// </summary>
+    public bool Enabled { get; set; } = true;
+    
+    /// <summary>
     /// PI Web API base URL (e.g., https://SDHQPIVWEB01.enxco.com/piwebapi)
     /// </summary>
     public string BaseUrl { get; set; } = string.Empty;
@@ -84,6 +89,12 @@ public sealed class PIWebApiOptionsValidator : IValidateOptions<PIWebApiOptions>
     public ValidateOptionsResult Validate(string? name, PIWebApiOptions options)
     {
         var errors = new List<string>();
+        
+        // Skip validation if disabled
+        if (!options.Enabled)
+        {
+            return ValidateOptionsResult.Success;
+        }
         
         if (string.IsNullOrWhiteSpace(options.BaseUrl))
         {

@@ -31,6 +31,7 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
     private readonly ITimeSeriesWriter _timeSeriesWriter;
     private readonly ICurrentValueCache _currentValueCache;
     private readonly IIdempotencyStore _idempotencyStore;
+    private readonly IPointLookupService _pointLookup;
     private readonly IConnectionMultiplexer _redis;
     
     private readonly InternalPipelineMetrics _metrics = new();
@@ -45,6 +46,7 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
         ITimeSeriesWriter timeSeriesWriter,
         ICurrentValueCache currentValueCache,
         IIdempotencyStore idempotencyStore,
+        IPointLookupService pointLookup,
         IConnectionMultiplexer redis,
         ILogger<IngestionPipeline> logger)
     {
@@ -54,6 +56,7 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
         _timeSeriesWriter = timeSeriesWriter;
         _currentValueCache = currentValueCache;
         _idempotencyStore = idempotencyStore;
+        _pointLookup = pointLookup;
         _redis = redis;
         _logger = logger;
     }
@@ -221,6 +224,9 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
                 return PipelineResult.SuccessResult(0, sw.ElapsedMilliseconds);
             }
             
+            // ENRICHMENT: Resolve PointSequenceId from PointName (for replay/connectors that use point_id=0)
+            batch = await EnrichBatchWithPointSequenceIdsAsync(batch, batchId, cancellationToken);
+            
             // 2. WRITE TO QUESTDB (time-series storage)
             await _timeSeriesWriter.WriteAsync(batch, cancellationToken);
             
@@ -304,6 +310,90 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
         {
             _logger.LogError(ex, "Failed to send message to DLQ");
         }
+    }
+    
+    /// <summary>
+    /// Enrich batch by resolving PointSequenceIds from PointNames via lookup service.
+    /// This is necessary for replay connectors that publish with PointSequenceId=0
+    /// and must be looked up from the PointName.
+    /// </summary>
+    private async Task<DataPointBatch> EnrichBatchWithPointSequenceIdsAsync(
+        DataPointBatch batch,
+        string batchId,
+        CancellationToken cancellationToken)
+    {
+        var enrichedPoints = new List<DataPoint>();
+        int updated = 0;
+        
+        foreach (var point in batch.Points)
+        {
+            // Skip if already has valid SequenceId (not 0)
+            if (point.PointSequenceId != 0)
+            {
+                enrichedPoints.Add(point);
+                continue;
+            }
+            
+            // Try to resolve from PointName
+            if (string.IsNullOrEmpty(point.PointName))
+            {
+                _logger.LogWarning("Batch {BatchId}: Point has no PointName to resolve SequenceId", batchId);
+                enrichedPoints.Add(point);
+                continue;
+            }
+            
+            try
+            {
+                var lookup = await _pointLookup.GetByNameAsync(point.PointName, cancellationToken);
+                if (lookup != null)
+                {
+                    // Create new DataPoint with resolved SequenceId
+                    var enrichedPoint = new DataPoint
+                    {
+                        PointSequenceId = lookup.SequenceId,
+                        PointName = point.PointName,
+                        Timestamp = point.Timestamp,
+                        Value = point.Value,
+                        Quality = point.Quality
+                    };
+                    enrichedPoints.Add(enrichedPoint);
+                    updated++;
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "Batch {BatchId}: Could not resolve PointName '{PointName}' to SequenceId",
+                        batchId, point.PointName);
+                    enrichedPoints.Add(point);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Batch {BatchId}: Failed to lookup PointName '{PointName}'",
+                    batchId, point.PointName);
+                enrichedPoints.Add(point);
+            }
+        }
+        
+        if (updated > 0)
+        {
+            _logger.LogInformation(
+                "Batch {BatchId}: Enriched {Updated} points with PointSequenceIds via name lookup",
+                batchId, updated);
+            
+            // Return new batch with enriched points
+            return new DataPointBatch
+            {
+                Points = enrichedPoints.AsReadOnly(),
+                DataSourceId = batch.DataSourceId,
+                BatchId = batch.BatchId,
+                CreatedAt = batch.CreatedAt
+            };
+        }
+        
+        // No enrichment needed, return original batch
+        return batch;
     }
     
     public async ValueTask DisposeAsync()

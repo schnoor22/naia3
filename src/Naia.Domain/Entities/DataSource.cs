@@ -104,7 +104,13 @@ public enum DataSourceType
     CsvImport = 8,
     
     /// <summary>Kafka topic subscription</summary>
-    Kafka = 9
+    Kafka = 9,
+    
+    /// <summary>Weather API (Open-Meteo)</summary>
+    WeatherApi = 11,
+    
+    /// <summary>EIA Grid Data API (US electricity grid)</summary>
+    EiaGrid = 12
 }
 
 /// <summary>

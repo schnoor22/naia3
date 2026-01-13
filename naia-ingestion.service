@@ -1,0 +1,31 @@
+[Unit]
+Description=NAIA Data Ingestion Service
+After=network.target docker.service postgres.service questdb.service kafka.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=naia
+WorkingDirectory=/opt/naia
+ExecStart=/opt/naia/dotnet /opt/naia/publish/Naia.Ingestion.dll
+
+# Environment variables - override JSON config settings
+Environment="ASPNETCORE_ENVIRONMENT=Production"
+Environment="ASPNETCORE_URLS=http://localhost:5001"
+Environment="WindFarmReplay__DataDirectory=/opt/naia/data/kelmarsh/scada_2019"
+Environment="DOTNET_RUNNING_IN_CONTAINER=false"
+Environment="DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false"
+
+# Restart behavior
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=naia-ingestion
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target

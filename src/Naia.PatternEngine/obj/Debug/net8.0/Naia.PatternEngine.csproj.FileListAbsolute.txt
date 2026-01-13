@@ -8,6 +8,7 @@ C:\naia3\src\Naia.PatternEngine\obj\Debug\net8.0\Naia.PatternEngine.GeneratedMSB
 C:\naia3\src\Naia.PatternEngine\obj\Debug\net8.0\Naia.PatternEngine.AssemblyInfoInputs.cache
 C:\naia3\src\Naia.PatternEngine\obj\Debug\net8.0\Naia.PatternEngine.AssemblyInfo.cs
 C:\naia3\src\Naia.PatternEngine\obj\Debug\net8.0\Naia.PatternEngine.csproj.CoreCompileInputs.cache
+C:\naia3\src\Naia.PatternEngine\obj\Debug\net8.0\Naia.PatternEngine.sourcelink.json
 C:\naia3\src\Naia.PatternEngine\obj\Debug\net8.0\Naia.Pat.33EC8F8F.Up2Date
 C:\naia3\src\Naia.PatternEngine\obj\Debug\net8.0\Naia.PatternEngine.dll
 C:\naia3\src\Naia.PatternEngine\obj\Debug\net8.0\refint\Naia.PatternEngine.dll

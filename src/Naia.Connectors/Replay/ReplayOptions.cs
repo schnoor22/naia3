@@ -80,6 +80,17 @@ public sealed class ReplayOptions
     /// Kafka topic to publish replay data to.
     /// </summary>
     public string KafkaTopic { get; set; } = "naia.datapoints";
+    
+    /// <summary>
+    /// Enable interpolation to generate intermediate data points between 10-minute intervals.
+    /// </summary>
+    public bool EnableInterpolation { get; set; } = true;
+    
+    /// <summary>
+    /// Interval in seconds between interpolated data points (default: 15 seconds).
+    /// Original data is 10-minute intervals (600 seconds), so 15 seconds = 40 points per interval.
+    /// </summary>
+    public int InterpolationIntervalSeconds { get; set; } = 15;
 }
 
 /// <summary>

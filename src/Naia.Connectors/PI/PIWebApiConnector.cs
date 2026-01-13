@@ -74,6 +74,15 @@ public sealed class PIWebApiConnector : ICurrentValueConnector, IHistoricalDataC
         _baseUrl = config.ConnectionString.TrimEnd('/');
         _dataServerName = config.PiDataArchive;
         
+        // Skip initialization if pointing to localhost or explicitly disabled
+        if (_baseUrl.Contains("localhost", StringComparison.OrdinalIgnoreCase) || 
+            _baseUrl.Contains("127.0.0.1"))
+        {
+            IsAvailable = false;
+            _logger.LogDebug("PI Web API connector disabled (localhost URL)");
+            return;
+        }
+        
         // Configure authentication (only once per singleton lifetime)
         if (!_httpClient.DefaultRequestHeaders.Contains("Accept"))
         {

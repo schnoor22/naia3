@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40" fill="none">
+  <!-- Nai'a wordmark with ʻokina as echolocation -->
+  
+  <!-- "Nai" in sleek light font -->
+  <text x="0" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="26" font-weight="300" fill="#CBD5E1">Nai</text>
+  
+  <!-- The ʻOkina - stylized as echolocation waves! -->
+  <g transform="translate(42, 8)">
+    <!-- Three curved lines forming the ʻokina/echolocation -->
+    <path d="M0 0 C2.5 2 4 5 4 9 C4 13 2.5 16 0 18" stroke="url(#okina-grad)" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.4"/>
+    <path d="M-4 3 C-2 5 -1 7 -1 9 C-1 11 -2 13 -4 15" stroke="url(#okina-grad)" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.7"/>
+    <path d="M-8 5 C-7 6.5 -6.5 7.5 -6.5 9 C-6.5 10.5 -7 11.5 -8 13" stroke="url(#okina-grad)" stroke-width="3" stroke-linecap="round" fill="none"/>
+  </g>
+  
+  <!-- "a" completing the word -->
+  <text x="50" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="26" font-weight="300" fill="#CBD5E1">a</text>
+  
+  <defs>
+    <linearGradient id="okina-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#22D3EE"/>
+      <stop offset="100%" stop-color="#06B6D4"/>
+    </linearGradient>
+  </defs>
+</svg>

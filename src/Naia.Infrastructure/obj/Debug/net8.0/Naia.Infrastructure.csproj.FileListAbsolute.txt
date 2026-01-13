@@ -10,6 +10,7 @@ C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\Naia.Infrastructure.GeneratedM
 C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\Naia.Infrastructure.AssemblyInfoInputs.cache
 C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\Naia.Infrastructure.AssemblyInfo.cs
 C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\Naia.Infrastructure.csproj.CoreCompileInputs.cache
+C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\Naia.Infrastructure.sourcelink.json
 C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\Naia.Inf.A2C8654A.Up2Date
 C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\Naia.Infrastructure.dll
 C:\naia3\src\Naia.Infrastructure\obj\Debug\net8.0\refint\Naia.Infrastructure.dll

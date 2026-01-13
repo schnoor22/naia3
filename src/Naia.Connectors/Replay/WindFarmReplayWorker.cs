@@ -128,7 +128,12 @@ public sealed class WindFarmReplayWorker : BackgroundService
             _logger.LogInformation("Starting async initialization (this may take a few minutes)...");
             await InitializeAsync(stoppingToken);
             _isInitialized = true;
-            _logger.LogInformation("✓ Replay worker initialization complete - starting replay loop");
+            _logger.LogInformation("✓ Replay worker initialization complete");
+            
+            // Backfill initial 24 hours of data so users don't see empty trends
+            _logger.LogInformation("📊 Backfilling 24 hours of historical data...");
+            await BackfillInitialDataAsync(stoppingToken);
+            _logger.LogInformation("✓ Backfill complete - starting real-time replay");
             
             // Main replay loop
             while (!stoppingToken.IsCancellationRequested)
@@ -188,15 +193,12 @@ public sealed class WindFarmReplayWorker : BackgroundService
         
         _dataStartTime = timeRange.Value.Start;
         _dataEndTime = timeRange.Value.End;
-        
-        _logger.LogInformation("Data range: {Start} to {End}", _dataStartTime, _dataEndTime);
-        
-        // Calculate time offset to align data start with current time
-        var now = DateTime.UtcNow;
-        _timeOffset = now - _dataStartTime;
         _currentDataTime = _dataStartTime;
         
-        _logger.LogInformation("Time offset: {Days} days (data will appear as current)", _timeOffset.TotalDays);
+        _logger.LogInformation("Data range: {Start} to {End} ({Duration} total)", 
+            _dataStartTime, _dataEndTime, _dataEndTime - _dataStartTime);
+        
+        _logger.LogInformation("Data will be replayed with timestamps relative to current time (now)");
         
         // Preload data into memory for faster replay
         await PreloadDataAsync(ct);
@@ -268,6 +270,45 @@ public sealed class WindFarmReplayWorker : BackgroundService
         await Task.CompletedTask;
     }
     
+    private async Task BackfillInitialDataAsync(CancellationToken ct)
+    {
+        if (_dataCache == null || _dataCache.Count == 0)
+        {
+            _logger.LogWarning("No data to backfill");
+            return;
+        }
+        
+        // Calculate time range: 24 hours ago to now
+        var now = DateTime.UtcNow;
+        var backfillStart = now.AddHours(-24);
+        var firstDataTimestamp = _dataCache.First().Item1;
+        
+        // Take first 24 hours of CSV data (144 points at 10-min intervals)
+        var dataIntervalMinutes = _options.DataIntervalMinutes;
+        var pointsNeeded = (int)(24 * 60 / dataIntervalMinutes); // 144 for 10-min intervals
+        var dataToBackfill = _dataCache.Take(pointsNeeded).ToList();
+        
+        _logger.LogInformation("Backfilling {Count} timestamps ({Hours}h of data)", 
+            dataToBackfill.Count, dataToBackfill.Count * dataIntervalMinutes / 60.0);
+        
+        // Publish each batch with timestamps spread across last 24 hours
+        foreach (var (timestamp, points) in dataToBackfill)
+        {
+            ct.ThrowIfCancellationRequested();
+            
+            // Map this data point's position in the CSV to a position in the last 24 hours
+            var elapsedSinceDataStart = timestamp - firstDataTimestamp;
+            var adjustedTimestamp = backfillStart + elapsedSinceDataStart;
+            
+            // Publish without delay (fast backfill)
+            await PublishBatchAsync(points, adjustedTimestamp, ct);
+        }
+        
+        var pointsPublished = dataToBackfill.Sum(d => d.Points.Count);
+        _logger.LogInformation("✓ Backfilled {Points:N0} data points from {Start:HH:mm} to {End:HH:mm}", 
+            pointsPublished, backfillStart, now);
+    }
+    
     private async Task RunReplayLoopAsync(CancellationToken ct)
     {
         if (_dataCache == null || _dataCache.Count == 0)
@@ -276,35 +317,103 @@ public sealed class WindFarmReplayWorker : BackgroundService
             return;
         }
         
-        var dataIntervalMs = _options.DataIntervalMinutes * 60 * 1000;
-        var replayIntervalMs = (int)(dataIntervalMs / _options.SpeedMultiplier);
+        // Use 15-second interval for live dashboard feel (original data is 10-minute intervals)
+        var replayIntervalMs = _options.EnableInterpolation 
+            ? _options.InterpolationIntervalSeconds * 1000 
+            : 15000;
+        var dataIntervalMinutes = _options.DataIntervalMinutes; // Original data is 10 minutes apart
+        var interpolationSteps = (dataIntervalMinutes * 60 * 1000) / replayIntervalMs; // How many steps in 10 minutes
         
         _logger.LogInformation(
-            "Starting replay: {Interval}ms between batches ({Speed}x speed)",
-            replayIntervalMs, _options.SpeedMultiplier);
+            "🎬 Starting REAL-TIME replay: {Interval}s interval, {Steps} steps per data point, data appears as NOW",
+            replayIntervalMs / 1000, interpolationSteps);
         
-        foreach (var (timestamp, points) in _dataCache)
+        for (int i = 0; i < _dataCache.Count - 1; i++)
         {
             ct.ThrowIfCancellationRequested();
             
-            if (_isPaused)
+            var (currentTimestamp, currentPoints) = _dataCache[i];
+            var (nextTimestamp, nextPoints) = _dataCache[i + 1];
+            
+            // Publish interpolated values between current and next data points
+            for (int step = 0; step < interpolationSteps; step++)
             {
-                // Wait until unpaused
-                while (_isPaused && !ct.IsCancellationRequested)
+                ct.ThrowIfCancellationRequested();
+                
+                if (_isPaused)
                 {
-                    await Task.Delay(500, ct);
+                    // Wait until unpaused
+                    while (_isPaused && !ct.IsCancellationRequested)
+                    {
+                        await Task.Delay(500, ct);
+                    }
                 }
+                
+                // Calculate interpolation factor (0.0 at start, 1.0 at end)
+                var factor = (double)step / interpolationSteps;
+                
+                // Use CURRENT time - this is real-time simulation, not historical replay
+                var nowTimestamp = DateTime.UtcNow;
+                
+                // Interpolate values between current and next points
+                var interpolatedPoints = InterpolatePoints(currentPoints, nextPoints, factor);
+                
+                _currentDataTime = nowTimestamp;
+                
+                // Publish interpolated batch with NOW timestamp
+                await PublishBatchAsync(interpolatedPoints, nowTimestamp, ct);
+                
+                // Wait for next interval
+                await Task.Delay(replayIntervalMs, ct);
             }
-            
-            _currentDataTime = timestamp;
-            var adjustedTimestamp = timestamp + _timeOffset;
-            
-            // Publish all points for this timestamp
-            await PublishBatchAsync(points, adjustedTimestamp, ct);
-            
-            // Wait for next interval (adjusted for speed)
-            await Task.Delay(replayIntervalMs, ct);
         }
+        
+        // Publish the last data point with current timestamp
+        var lastIndex = _dataCache.Count - 1;
+        var (lastTimestamp, lastPoints) = _dataCache[lastIndex];
+        await PublishBatchAsync(lastPoints, DateTime.UtcNow, ct);
+    }
+    
+    /// <summary>
+    /// Linear interpolation between two sets of data points.
+    /// </summary>
+    private List<ReplayDataPoint> InterpolatePoints(
+        List<ReplayDataPoint> currentPoints,
+        List<ReplayDataPoint> nextPoints,
+        double factor)
+    {
+        var interpolated = new List<ReplayDataPoint>();
+        
+        // Create lookup for next points by point name
+        var nextPointsDict = nextPoints.ToDictionary(p => p.PointName, p => p);
+        
+        foreach (var current in currentPoints)
+        {
+            // Find matching point in next batch
+            if (nextPointsDict.TryGetValue(current.PointName, out var next))
+            {
+                // Linear interpolation: value = current + (next - current) * factor
+                var interpolatedValue = current.Value + (next.Value - current.Value) * factor;
+                
+                interpolated.Add(new ReplayDataPoint
+                {
+                    PointName = current.PointName,
+                    SourceAddress = current.SourceAddress,
+                    Value = interpolatedValue,
+                    OriginalTimestamp = current.OriginalTimestamp, // Keep original for reference
+                    Unit = current.Unit,
+                    ReadingType = current.ReadingType,
+                    TurbineNumber = current.TurbineNumber
+                });
+            }
+            else
+            {
+                // No matching next point, use current value
+                interpolated.Add(current);
+            }
+        }
+        
+        return interpolated;
     }
     
     private async Task PublishBatchAsync(

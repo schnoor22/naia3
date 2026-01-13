@@ -1,133 +1,175 @@
-# 🚀 START HERE - NAIA 24-Hour Test Quick Start
+# � NAIA Complete Documentation Bundle
 
-**Status Check:** Everything is already running! ✅
-
-## ✅ Current Infrastructure Status
-
-All Docker containers are UP and HEALTHY:
-- ✅ PostgreSQL (port 5432)
-- ✅ QuestDB (port 9000, 8812)
-- ✅ Redis (port 6379)
-- ✅ Kafka (port 9092)
-- ✅ Zookeeper (port 2181)
-- ✅ Kafka UI (port 8080)
-
-## 🎯 Simple 3-Step Startup
-
-### Step 1: Build the Solution (1 minute)
-
-```powershell
-dotnet build Naia.sln --configuration Release
-```
-
-### Step 2: Start Naia.Api (Producer + Pattern Engine)
-
-Open **PowerShell Window #1**:
-```powershell
-cd c:\naia3\src\Naia.Api
-dotnet run --configuration Release
-```
-
-Wait for: `Now listening on: http://localhost:5052`
-
-Then in **PowerShell Window #2**, start PI ingestion:
-```powershell
-Invoke-RestMethod -Uri "http://localhost:5052/api/ingestion/start" -Method POST
-```
-
-###Step 3: Start Naia.Ingestion (Consumer)
-
-Open **PowerShell Window #3**:
-```powershell
-cd c:\naia3\src\Naia.Ingestion
-dotnet run --configuration Release
-```
-
-Wait for: `Pipeline Health: ✓`
+**Start here.** Choose your path based on what you need to do.
 
 ---
 
-## 🎉 THAT'S IT! System is Running
+## 🎯 I Want To...
 
-### Check Data is Flowing
-
-**QuestDB:** http://localhost:9000
-```sql
-SELECT COUNT(*) FROM timeseries WHERE point_name LIKE 'MLR1%';
+### **"Get a quick status check"** (30 seconds)
+→ [QUICK_REFERENCE.md - Status Checks](QUICK_REFERENCE.md#-status-checks)
+```bash
+curl https://app.naia.run/api/health
 ```
 
-**Hangfire Dashboard:** http://localhost:5052/hangfire  
-(See all pattern jobs running)
+### **"Deploy new code"** (5 minutes)
+→ [QUICK_REFERENCE.md - Deploy New Code](QUICK_REFERENCE.md#-deploy-new-code)
+```bash
+ssh root@37.27.189.86 "cd /home/naia/naia && git pull && dotnet publish Naia.sln -c Release -o ./publish && systemctl restart naia-api naia-ingestion"
+```
 
-**Kafka UI:** http://localhost:8080  
-(See messages flowing)
+### **"Fix a problem"** (5-15 minutes)
+→ [QUICK_REFERENCE.md - Quick Troubleshooting](QUICK_REFERENCE.md#quick-troubleshooting)
+1. Find your error in the table
+2. Follow the solution
+3. Check logs if still stuck
+
+### **"Understand the system"** (30 minutes)
+→ [SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md)
+- Architecture diagram
+- Component descriptions
+- Technology stack
+- Data flow explanation
+
+### **"Set up the system from scratch"** (30 minutes)
+→ [INSTALLATION_GUIDE.md](INSTALLATION_GUIDE.md)
+- 8 phases with exact commands
+- Verification checklist
+- Troubleshooting during install
+
+### **"Know all the operations commands"** (Reference)
+→ [MAINTENANCE_DEBUG_GUIDE.md](MAINTENANCE_DEBUG_GUIDE.md)
+- All useful commands organized by task
+- Common issues with solutions
+- Development workflow
+- Backup/recovery procedures
+
+### **"Get a one-page cheat sheet"** (Quick lookup)
+→ [QUICK_REFERENCE.md](QUICK_REFERENCE.md)
+- Essential info at a glance
+- Command reference
+- Emergency procedures
+- Pro tips
+
+### **"See the whole project journey"** (Overview)
+→ [PROJECT_COMPLETION_SUMMARY.md](PROJECT_COMPLETION_SUMMARY.md)
+- What was built
+- Why each decision was made
+- Project status
+- Next steps
+
+### **"Find a specific document"** (Navigation)
+→ [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)
+- All documents described
+- Task-based navigation
+- External resources
+---
+
+## 📚 All Documentation Files
+
+| Document | Purpose | Read Time | When to Use |
+|----------|---------|-----------|------------|
+| **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** | Cheat sheet | 10 min | Daily operations |
+| **[SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md)** | Architecture | 20 min | Understanding the system |
+| **[INSTALLATION_GUIDE.md](INSTALLATION_GUIDE.md)** | Setup steps | 30 min | Deploying from scratch |
+| **[MAINTENANCE_DEBUG_GUIDE.md](MAINTENANCE_DEBUG_GUIDE.md)** | Operations & troubleshooting | 60 min | Reference during work |
+| **[DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)** | Navigation hub | 10 min | Finding documents |
+| **[PROJECT_COMPLETION_SUMMARY.md](PROJECT_COMPLETION_SUMMARY.md)** | Project overview | 15 min | Context & decisions |
 
 ---
 
-## ⏰ What Happens Next
+## 🚀 Quick Start (Choose Your Role)
 
-| Time | Event |
+### **I'm a New Team Member**
+1. Read [SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md) (20 min)
+2. Read [QUICK_REFERENCE.md](QUICK_REFERENCE.md) (10 min)
+3. Test: `curl https://app.naia.run/api/health`
+4. SSH: `ssh root@37.27.189.86`
+5. Keep [MAINTENANCE_DEBUG_GUIDE.md](MAINTENANCE_DEBUG_GUIDE.md) handy
+
+### **I'm Deploying the System**
+1. Start at [INSTALLATION_GUIDE.md - Phase 1](INSTALLATION_GUIDE.md#phase-1-initial-server-setup-5-minutes)
+2. Work through all 8 phases (~30 minutes)
+3. Use verification checklist at end
+4. Bookmark [QUICK_REFERENCE.md](QUICK_REFERENCE.md) for later
+
+### **I'm Maintaining the System**
+1. Bookmark [QUICK_REFERENCE.md](QUICK_REFERENCE.md) (quick commands)
+2. Keep [MAINTENANCE_DEBUG_GUIDE.md](MAINTENANCE_DEBUG_GUIDE.md) open
+3. Use "Quick Troubleshooting" table for common issues
+4. Follow "Backup Reminders" weekly
+
+### **I'm Developing Features**
+1. Read [SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md) (architecture)
+2. Review [MAINTENANCE_DEBUG_GUIDE.md - Development Workflow](MAINTENANCE_DEBUG_GUIDE.md#development-workflow)
+3. Clone repo and set up locally
+4. Follow git workflow: branch → commit → PR → merge → deploy
+
+---
+
+## ⚡ Most Common Commands
+
+```bash
+# Check if system is up
+curl https://app.naia.run/api/health
+
+# SSH to server
+ssh root@37.27.189.86
+
+# View API logs in real-time
+ssh root@37.27.189.86 "journalctl -u naia-api -f"
+
+# Restart services
+ssh root@37.27.189.86 "systemctl restart naia-api naia-ingestion caddy"
+
+# Deploy new code
+ssh root@37.27.189.86 "cd /home/naia/naia && git pull && dotnet publish Naia.sln -c Release -o ./publish && systemctl restart naia-api naia-ingestion"
+```
+
+---
+
+## 🔗 Key Information
+
+| Item | Value |
 |------|-------|
-| **5 min** | First behavioral stats calculated |
-| **15 min** | Correlations detected |
-| **30 min** | First pattern suggestion appears! |
-| **1 hour** | Pattern learning processes approvals |
-
-### Check for Suggestions
-
-```powershell
-# Get pending suggestions
-Invoke-RestMethod "http://localhost:5052/api/suggestions/pending"
-
-# Approve a suggestion (copy ID from above)
-$id = "PASTE-SUGGESTION-ID-HERE"
-Invoke-RestMethod -Uri "http://localhost:5052/api/suggestions/$id/approve" -Method POST
-```
+| **Production URL** | https://app.naia.run |
+| **Server IP** | 37.27.189.86 |
+| **SSH** | `ssh root@37.27.189.86` |
+| **Health Check** | `curl https://app.naia.run/api/health` |
+| **Code Location** | `/home/naia/naia` |
 
 ---
 
-## 📊 Monitor (Optional)
+## ✅ System Status
 
-```powershell
-.\monitor_24h_test.ps1
-```
+**Current Status**: 🟢 LIVE & OPERATIONAL
 
-Shows live dashboard with:
-- Container status
-- Data flow metrics  
-- Pattern suggestions
-- Hangfire jobs
-
----
-
-## 🎯 Success Checklist
-
-After 24 hours, you should have:
-
-- [ ] 300,000+ time-series records in QuestDB
-- [ ] 4+ behavioral statistics calculated
-- [ ] 6+ correlations detected
-- [ ] 1+ behavioral cluster formed
-- [ ] 1+ pattern suggestion created
-- [ ] At least 1 suggestion approved
-- [ ] Pattern confidence increased after approval
+All services running:
+- ✅ API (naia-api.service)
+- ✅ Ingestion Worker (naia-ingestion.service)
+- ✅ PostgreSQL
+- ✅ QuestDB
+- ✅ Redis
+- ✅ Kafka
+- ✅ Caddy
 
 ---
 
-## 🆘 Troubleshooting
+## 📖 Next Steps
 
-**No data in QuestDB?**
-```powershell
-# Check PI ingestion status
-Invoke-RestMethod "http://localhost:5052/api/ingestion/status"
-```
+**Choose what you need:**
+- 🆘 **Emergency?** → [QUICK_REFERENCE.md - Emergency Recovery](QUICK_REFERENCE.md#emergency-recovery)
+- 📝 **First time?** → [INSTALLATION_GUIDE.md](INSTALLATION_GUIDE.md)
+- 🔧 **Maintenance?** → [MAINTENANCE_DEBUG_GUIDE.md](MAINTENANCE_DEBUG_GUIDE.md)
+- 🏗️ **Understand system?** → [SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md)
+- 📚 **Find documents?** → [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)
+- 📋 **Project details?** → [PROJECT_COMPLETION_SUMMARY.md](PROJECT_COMPLETION_SUMMARY.md)
 
-**No suggestions after 1 hour?**
-```powershell
-# Check Hangfire dashboard
-Start-Process "http://localhost:5052/hangfire"
-# Verify all jobs show "Next Execution" times
-```
+---
+
+**Generated**: January 2026
+**System Version**: 3.0 (Production)
+**Status**: 🚀 READY FOR OPERATIONS
 
 **Pattern suggestions to view:****
 ```powershell

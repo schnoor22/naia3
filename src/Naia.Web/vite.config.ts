@@ -3,6 +3,9 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
 	plugins: [sveltekit()],
+	build: {
+		sourcemap: true, // Enable source maps for debugging
+	},
 	server: {
 		port: 5173,
 		proxy: {

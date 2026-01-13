@@ -208,7 +208,7 @@ public sealed class CorrelationAnalysisJob : ICorrelationAnalysisJob
         var windowHours = _options.CorrelationProcessor.WindowHours;
         var minSamples = _options.CorrelationProcessor.MinSamples;
 
-        await using var questConn = new NpgsqlConnection(_postgresConnectionString);
+        await using var questConn = new NpgsqlConnection(_questDbConnectionString);
         await questConn.OpenAsync(cancellationToken);
 
         // Compare each pair within the group
@@ -261,28 +261,23 @@ public sealed class CorrelationAnalysisJob : ICorrelationAnalysisJob
         int minSamples,
         CancellationToken cancellationToken)
     {
-        // Standard PostgreSQL query (compatible with QuestDB wire protocol)
-        // Uses a simple JOIN on timestamps with window filtering
+        // QuestDB-compatible query using ASOF JOIN for time alignment
+        // and dateadd() for interval arithmetic
+        var windowMicroseconds = (long)windowHours * 3600 * 1000000L;
+        
         var sql = $@"
-            WITH aligned AS (
-                SELECT 
-                    CAST(a.value AS DOUBLE PRECISION) as val1,
-                    CAST(b.value AS DOUBLE PRECISION) as val2
-                FROM 
-                    (SELECT timestamp, value FROM point_data 
-                     WHERE point_id = {pointIdSeq1} 
-                       AND timestamp > (now() - INTERVAL '{windowHours} hours')) a
-                INNER JOIN 
-                    (SELECT timestamp, value FROM point_data 
-                     WHERE point_id = {pointIdSeq2}
-                       AND timestamp > (now() - INTERVAL '{windowHours} hours')) b
-                ON a.timestamp = b.timestamp
-            )
             SELECT 
-                corr(val1, val2) as correlation,
+                corr(a.value, b.value) as correlation,
                 count(*) as sample_count
-            FROM aligned
-            WHERE val1 IS NOT NULL AND val2 IS NOT NULL
+            FROM 
+                (SELECT timestamp, value FROM point_data 
+                 WHERE point_id = {pointIdSeq1} 
+                   AND timestamp > dateadd('h', -{windowHours}, now())) a
+            ASOF JOIN 
+                (SELECT timestamp, value FROM point_data 
+                 WHERE point_id = {pointIdSeq2}
+                   AND timestamp > dateadd('h', -{windowHours}, now())) b
+            WHERE a.value IS NOT NULL AND b.value IS NOT NULL
         ";
 
         await using var cmd = new NpgsqlCommand(sql, conn);

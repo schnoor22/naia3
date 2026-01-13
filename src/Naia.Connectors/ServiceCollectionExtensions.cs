@@ -2,9 +2,11 @@ using Confluent.Kafka;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Naia.Connectors.EiaGrid;
 using Naia.Connectors.OpcSimulator;
 using Naia.Connectors.PI;
 using Naia.Connectors.Replay;
+using Naia.Connectors.Weather;
 
 namespace Naia.Connectors;
 
@@ -14,6 +16,8 @@ namespace Naia.Connectors;
 /// AVAILABLE CONNECTORS:
 /// - PI Web API: Real-time data from OSIsoft PI historian
 /// - Wind Farm Replay: Historical Kelmarsh wind farm data simulation
+/// - Weather API: Real-time weather data from Open-Meteo
+/// - EIA Grid: US electricity grid data from Energy Information Administration
 /// - OPC UA Simulator: Simulated renewable energy assets (planned)
 /// </summary>
 public static class ServiceCollectionExtensions
@@ -28,11 +32,11 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // Register options
+        // Register options WITHOUT ValidateOnStart - we'll validate on-demand only
         services.AddOptions<PIWebApiOptions>()
-            .Bind(configuration.GetSection(PIWebApiOptions.SectionName))
-            .ValidateOnStart();
+            .Bind(configuration.GetSection(PIWebApiOptions.SectionName));
         
+        // Register validator but don't force it to run at startup
         services.AddSingleton<IValidateOptions<PIWebApiOptions>, PIWebApiOptionsValidator>();
         
         // Register HttpClient with Windows auth and SSL bypass support
@@ -150,6 +154,20 @@ public static class ServiceCollectionExtensions
             services.AddOpcSimulatorConnector(configuration);
         }
         
+        // Weather API Connector
+        var weatherEnabled = configuration.GetValue<bool>("WeatherApi:Enabled", false);
+        if (weatherEnabled)
+        {
+            services.AddWeatherApiConnector(configuration);
+        }
+        
+        // EIA Grid API Connector
+        var eiaEnabled = configuration.GetValue<bool>("EiaGrid:Enabled", false);
+        if (eiaEnabled)
+        {
+            services.AddEiaGridApiConnector(configuration);
+        }
+        
         return services;
     }
     
@@ -179,6 +197,64 @@ public static class ServiceCollectionExtensions
     /// Adds OPC UA Simulator connector services.
     /// Connects to the NAIA OPC UA Simulator for testing.
     /// </summary>
+    
+    /// <summary>
+    /// Adds Weather API connector services using Open-Meteo (free, no API key required).
+    /// Provides real-time weather observations for configured locations.
+    /// </summary>
+    public static IServiceCollection AddWeatherApiConnector(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // Register options
+        services.AddOptions<WeatherApiOptions>()
+            .Bind(configuration.GetSection(WeatherApiOptions.SectionName))
+            .ValidateOnStart();
+        
+        // Register HttpClient
+        services.AddHttpClient<WeatherApiConnector>(client =>
+        {
+            client.DefaultRequestHeaders.Add("User-Agent", "NAIA/1.0");
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        
+        // Register connector as singleton
+        services.AddSingleton<WeatherApiConnector>();
+        
+        // Register the ingestion worker
+        services.AddHostedService<WeatherIngestionWorker>();
+        
+        return services;
+    }
+    
+    /// <summary>
+    /// Adds EIA Grid Data API connector services for US electricity grid data.
+    /// Requires free API key from https://www.eia.gov/opendata/
+    /// </summary>
+    public static IServiceCollection AddEiaGridApiConnector(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // Register options
+        services.AddOptions<EiaGridApiOptions>()
+            .Bind(configuration.GetSection(EiaGridApiOptions.SectionName))
+            .ValidateOnStart();
+        
+        // Register HttpClient
+        services.AddHttpClient<EiaGridApiConnector>(client =>
+        {
+            client.DefaultRequestHeaders.Add("User-Agent", "NAIA/1.0");
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        
+        // Register connector as singleton
+        services.AddSingleton<EiaGridApiConnector>();
+        
+        // Register the ingestion worker
+        services.AddHostedService<EiaGridIngestionWorker>();
+        
+        return services;
+    }
     public static IServiceCollection AddOpcSimulatorConnector(
         this IServiceCollection services,
         IConfiguration configuration)

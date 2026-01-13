@@ -145,7 +145,7 @@ public sealed class PatternMatchingJob : IPatternMatchingJob
 
         // Get active clusters that don't have recent pending suggestions
         var sql = @"
-            SELECT bc.id, bc.member_point_ids, COALESCE(bc.cohesion, bc.average_cohesion)
+            SELECT bc.id, bc.point_ids, bc.cohesion
             FROM behavioral_clusters bc
             WHERE bc.is_active = true
               AND NOT EXISTS (
@@ -154,7 +154,7 @@ public sealed class PatternMatchingJob : IPatternMatchingJob
                     AND ps.status = 'pending'
                     AND ps.created_at > NOW() - INTERVAL '1 hour'
               )
-            ORDER BY bc.detected_at DESC
+            ORDER BY bc.created_at DESC
             LIMIT 100
         ";
 
@@ -163,8 +163,8 @@ public sealed class PatternMatchingJob : IPatternMatchingJob
 
         while (await reader.ReadAsync(cancellationToken))
         {
-            var memberPointIdsJson = reader.GetString(1);
-            var pointIds = System.Text.Json.JsonSerializer.Deserialize<List<Guid>>(memberPointIdsJson) ?? new List<Guid>();
+            var pointIdsArray = reader.GetFieldValue<Guid[]>(1);
+            var pointIds = pointIdsArray.ToList();
             
             clusters.Add(new ClusterInfo
             {
@@ -244,11 +244,13 @@ public sealed class PatternMatchingJob : IPatternMatchingJob
         await using var conn = new NpgsqlConnection(_postgresConnectionString);
         await conn.OpenAsync(cancellationToken);
 
+        // Join with behavioral_stats to get min/max values
         var sql = @"
-            SELECT id, name, address, description, engineering_unit,
-                   value_type, min_value, max_value
-            FROM points
-            WHERE id = ANY(@PointIds)
+            SELECT p.id, p.name, p.address, p.description, p.engineering_units,
+                   p.value_type, bs.min_value, bs.max_value
+            FROM points p
+            LEFT JOIN behavioral_stats bs ON bs.point_id = p.id
+            WHERE p.id = ANY(@PointIds)
         ";
 
         await using var cmd = new NpgsqlCommand(sql, conn);

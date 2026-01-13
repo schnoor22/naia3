@@ -37,7 +37,8 @@ public static class PatternEngineServiceExtensions
 
         // Get connection strings
         var postgresConnection = configuration.GetConnectionString("PostgreSQL") 
-            ?? "Host=localhost;Database=naia;Username=naia;Password=naia";
+            ?? configuration.GetConnectionString("PostgreSql")
+            ?? "Host=localhost;Database=naia;Username=naia;Password=naia_dev_password";
         var questDbConnection = configuration.GetConnectionString("QuestDB")
             ?? "Host=localhost;Port=8812;Database=qdb;Username=admin;Password=quest";
         

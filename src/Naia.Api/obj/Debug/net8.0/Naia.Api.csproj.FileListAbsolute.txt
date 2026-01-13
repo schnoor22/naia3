@@ -1,6 +1,7 @@
 C:\naia3\src\Naia.Api\bin\Debug\net8.0\app.config
 C:\naia3\src\Naia.Api\bin\Debug\net8.0\appsettings.Development.json
 C:\naia3\src\Naia.Api\bin\Debug\net8.0\appsettings.json
+C:\naia3\src\Naia.Api\bin\Debug\net8.0\Naia.Api.staticwebassets.runtime.json
 C:\naia3\src\Naia.Api\bin\Debug\net8.0\Naia.Api.staticwebassets.endpoints.json
 C:\naia3\src\Naia.Api\bin\Debug\net8.0\Naia.Api.exe
 C:\naia3\src\Naia.Api\bin\Debug\net8.0\Naia.Api.dll.config
@@ -24,6 +25,7 @@ C:\naia3\src\Naia.Api\bin\Debug\net8.0\Microsoft.Extensions.Caching.Memory.dll
 C:\naia3\src\Naia.Api\bin\Debug\net8.0\Microsoft.Extensions.Configuration.Binder.dll
 C:\naia3\src\Naia.Api\bin\Debug\net8.0\Microsoft.Extensions.DependencyInjection.dll
 C:\naia3\src\Naia.Api\bin\Debug\net8.0\Microsoft.Extensions.DependencyInjection.Abstractions.dll
+C:\naia3\src\Naia.Api\bin\Debug\net8.0\Microsoft.Extensions.DependencyModel.dll
 C:\naia3\src\Naia.Api\bin\Debug\net8.0\Microsoft.Extensions.Diagnostics.dll
 C:\naia3\src\Naia.Api\bin\Debug\net8.0\Microsoft.Extensions.Diagnostics.Abstractions.dll
 C:\naia3\src\Naia.Api\bin\Debug\net8.0\Microsoft.Extensions.Hosting.Abstractions.dll
@@ -37,6 +39,20 @@ C:\naia3\src\Naia.Api\bin\Debug\net8.0\Newtonsoft.Json.dll
 C:\naia3\src\Naia.Api\bin\Debug\net8.0\Npgsql.dll
 C:\naia3\src\Naia.Api\bin\Debug\net8.0\Npgsql.EntityFrameworkCore.PostgreSQL.dll
 C:\naia3\src\Naia.Api\bin\Debug\net8.0\Pipelines.Sockets.Unofficial.dll
+C:\naia3\src\Naia.Api\bin\Debug\net8.0\Serilog.dll
+C:\naia3\src\Naia.Api\bin\Debug\net8.0\Serilog.AspNetCore.dll
+C:\naia3\src\Naia.Api\bin\Debug\net8.0\Serilog.Enrichers.Environment.dll
+C:\naia3\src\Naia.Api\bin\Debug\net8.0\Serilog.Enrichers.Process.dll
+C:\naia3\src\Naia.Api\bin\Debug\net8.0\Serilog.Enrichers.Thread.dll
+C:\naia3\src\Naia.Api\bin\Debug\net8.0\Serilog.Extensions.Hosting.dll
+C:\naia3\src\Naia.Api\bin\Debug\net8.0\Serilog.Extensions.Logging.dll
+C:\naia3\src\Naia.Api\bin\Debug\net8.0\Serilog.Formatting.Compact.dll
+C:\naia3\src\Naia.Api\bin\Debug\net8.0\Serilog.Settings.Configuration.dll
+C:\naia3\src\Naia.Api\bin\Debug\net8.0\Serilog.Sinks.Console.dll
+C:\naia3\src\Naia.Api\bin\Debug\net8.0\Serilog.Sinks.Debug.dll
+C:\naia3\src\Naia.Api\bin\Debug\net8.0\Serilog.Sinks.File.dll
+C:\naia3\src\Naia.Api\bin\Debug\net8.0\Serilog.Sinks.PeriodicBatching.dll
+C:\naia3\src\Naia.Api\bin\Debug\net8.0\Serilog.Sinks.PostgreSQL.dll
 C:\naia3\src\Naia.Api\bin\Debug\net8.0\StackExchange.Redis.dll
 C:\naia3\src\Naia.Api\bin\Debug\net8.0\Swashbuckle.AspNetCore.Swagger.dll
 C:\naia3\src\Naia.Api\bin\Debug\net8.0\Swashbuckle.AspNetCore.SwaggerGen.dll
@@ -98,6 +114,7 @@ C:\naia3\src\Naia.Api\obj\Debug\net8.0\Naia.Api.AssemblyInfo.cs
 C:\naia3\src\Naia.Api\obj\Debug\net8.0\Naia.Api.csproj.CoreCompileInputs.cache
 C:\naia3\src\Naia.Api\obj\Debug\net8.0\Naia.Api.MvcApplicationPartsAssemblyInfo.cs
 C:\naia3\src\Naia.Api\obj\Debug\net8.0\Naia.Api.MvcApplicationPartsAssemblyInfo.cache
+C:\naia3\src\Naia.Api\obj\Debug\net8.0\Naia.Api.sourcelink.json
 C:\naia3\src\Naia.Api\obj\Debug\net8.0\rjimswa.dswa.cache.json
 C:\naia3\src\Naia.Api\obj\Debug\net8.0\rjsmrazor.dswa.cache.json
 C:\naia3\src\Naia.Api\obj\Debug\net8.0\rjsmcshtml.dswa.cache.json
@@ -113,4 +130,3 @@ C:\naia3\src\Naia.Api\obj\Debug\net8.0\refint\Naia.Api.dll
 C:\naia3\src\Naia.Api\obj\Debug\net8.0\Naia.Api.pdb
 C:\naia3\src\Naia.Api\obj\Debug\net8.0\Naia.Api.genruntimeconfig.cache
 C:\naia3\src\Naia.Api\obj\Debug\net8.0\ref\Naia.Api.dll
-C:\naia3\src\Naia.Api\bin\Debug\net8.0\Naia.Api.staticwebassets.runtime.json

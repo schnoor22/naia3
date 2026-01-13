@@ -1,0 +1,34 @@
+app.naia.run {
+    # SignalR hub - MUST be first with WebSocket support
+    handle /hubs/* {
+        reverse_proxy localhost:5000 {
+            flush_interval -1
+        }
+    }
+
+    # API endpoints
+    handle /api/* {
+        reverse_proxy localhost:5000
+    }
+
+    # Health check
+    handle /health {
+        reverse_proxy localhost:5000
+    }
+
+    # Hangfire dashboard
+    handle /hangfire* {
+        reverse_proxy localhost:5000
+    }
+
+    # Static files for everything else
+    handle {
+        root * /opt/naia/build
+        try_files {path} /index.html
+        file_server
+    }
+
+    log {
+        output file /var/log/caddy/access.log
+    }
+}

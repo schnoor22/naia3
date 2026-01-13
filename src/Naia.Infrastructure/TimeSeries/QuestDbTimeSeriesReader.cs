@@ -39,7 +39,8 @@ public sealed class QuestDbTimeSeriesReader : ITimeSeriesReader, IAsyncDisposabl
         var host = parts[0];
         var port = parts.Length > 1 ? int.Parse(parts[1]) : 8812;
         
-        var connectionString = new NpgsqlConnectionStringBuilder
+        // Configure connection string with QuestDB compatibility settings
+        var connStringBuilder = new NpgsqlConnectionStringBuilder
         {
             Host = host,
             Port = port,
@@ -47,12 +48,15 @@ public sealed class QuestDbTimeSeriesReader : ITimeSeriesReader, IAsyncDisposabl
             Password = "quest",
             Database = "qdb",
             CommandTimeout = 60,
-            Pooling = true,
-            MinPoolSize = 1,
-            MaxPoolSize = 10
-        }.ToString();
+            Pooling = false,  // Disable pooling - QuestDB may not handle it well
+            IncludeErrorDetail = false
+        };
         
-        _dataSource = NpgsqlDataSource.Create(connectionString);
+        // CRITICAL: Disable type introspection - QuestDB doesn't have pg_enum
+        // Add the Server Compatibility Mode directly to the connection string
+        var connString = connStringBuilder.ToString() + ";Server Compatibility Mode=NoTypeLoading";
+        
+        _dataSource = NpgsqlDataSource.Create(connString);
         _logger.LogInformation("QuestDB reader initialized: {Endpoint}", _options.PgWireEndpoint);
         
         return _dataSource;
@@ -68,19 +72,17 @@ public sealed class QuestDbTimeSeriesReader : ITimeSeriesReader, IAsyncDisposabl
         var ds = GetDataSource();
         var results = new List<DataPoint>();
         
+        // QuestDB doesn't support parameterized queries well with Npgsql - use string interpolation
         var sql = $@"
             SELECT timestamp, point_id, value, quality
             FROM {_options.TableName}
-            WHERE point_id = $1
-              AND timestamp >= $2
-              AND timestamp <= $3
+            WHERE point_id = {pointSequenceId}
+              AND timestamp >= '{startTime:yyyy-MM-ddTHH:mm:ss.ffffffZ}'
+              AND timestamp <= '{endTime:yyyy-MM-ddTHH:mm:ss.ffffffZ}'
             ORDER BY timestamp
             {(limit.HasValue ? $"LIMIT {limit.Value}" : "")}";
         
         await using var cmd = ds.CreateCommand(sql);
-        cmd.Parameters.AddWithValue(pointSequenceId);
-        cmd.Parameters.AddWithValue(startTime);
-        cmd.Parameters.AddWithValue(endTime);
         
         try
         {
@@ -103,7 +105,8 @@ public sealed class QuestDbTimeSeriesReader : ITimeSeriesReader, IAsyncDisposabl
         catch (NpgsqlException ex) when (ex.Message.Contains("does not exist"))
         {
             // Table doesn't exist yet - return empty
-            _logger.LogDebug("Table {Table} does not exist yet", _options.TableName);
+            _logger.LogWarning("QuestDB query failed: {Message} | Endpoint: {Endpoint} | Table: {Table}", 
+                ex.Message, _options.PgWireEndpoint, _options.TableName);
         }
         catch (Exception ex)
         {
@@ -120,15 +123,15 @@ public sealed class QuestDbTimeSeriesReader : ITimeSeriesReader, IAsyncDisposabl
     {
         var ds = GetDataSource();
         
+        // QuestDB doesn't support parameterized queries well with Npgsql - use string interpolation
         var sql = $@"
             SELECT timestamp, point_id, value, quality
             FROM {_options.TableName}
-            WHERE point_id = $1
+            WHERE point_id = {pointSequenceId}
             ORDER BY timestamp DESC
             LIMIT 1";
         
         await using var cmd = ds.CreateCommand(sql);
-        cmd.Parameters.AddWithValue(pointSequenceId);
         
         try
         {
@@ -168,6 +171,7 @@ public sealed class QuestDbTimeSeriesReader : ITimeSeriesReader, IAsyncDisposabl
     {
         var ds = GetDataSource();
         
+        // QuestDB doesn't support parameterized queries well with Npgsql - use string interpolation
         var sql = $@"
             SELECT 
                 min(value) as min_value,
@@ -176,14 +180,11 @@ public sealed class QuestDbTimeSeriesReader : ITimeSeriesReader, IAsyncDisposabl
                 stddev_samp(value) as std_dev,
                 count(*) as sample_count
             FROM {_options.TableName}
-            WHERE point_id = $1
-              AND timestamp >= $2
-              AND timestamp <= $3";
+            WHERE point_id = {pointSequenceId}
+              AND timestamp >= '{startTime:yyyy-MM-ddTHH:mm:ss.ffffffZ}'
+              AND timestamp <= '{endTime:yyyy-MM-ddTHH:mm:ss.ffffffZ}'";
         
         await using var cmd = ds.CreateCommand(sql);
-        cmd.Parameters.AddWithValue(pointSequenceId);
-        cmd.Parameters.AddWithValue(startTime);
-        cmd.Parameters.AddWithValue(endTime);
         
         try
         {
