@@ -2,18 +2,25 @@
 	import { onMount } from 'svelte';
 	import StatusCard from '$lib/components/StatusCard.svelte';
 	import MetricCard from '$lib/components/MetricCard.svelte';
-	import { getIngestionStatus, startIngestion, stopIngestion, checkPIHealth, discoverPIPoints, type IngestionStatus } from '$lib/services/api';
+	import { getIngestionStatus, startIngestion, stopIngestion, checkPIHealth, discoverPIPoints, addPIPoints, type IngestionStatus } from '$lib/services/api';
 	import { toasts } from '$lib/stores/signalr';
 
 	let status = $state<IngestionStatus | null>(null);
 	let piHealth = $state<any>(null);
 	let loading = $state(true);
 	let actionLoading = $state<string | null>(null);
+	let isInitialLoad = $state(true);
+
+	// Cache to detect changes and prevent clearing discovery results
+	let lastStatusJson = '';
+	let lastHealthJson = '';
 
 	// PI Discovery
 	let discoveryFilter = $state('*BESS*');
 	let discoveryResults = $state<any>(null);
 	let discovering = $state(false);
+	let selectedPoints = $state<Set<string>>(new Set());
+	let addingPoints = $state(false);
 
 	async function loadStatus() {
 		try {
@@ -21,12 +28,25 @@
 				getIngestionStatus().catch(() => null),
 				checkPIHealth().catch(() => null)
 			]);
-			status = ingestionStatus;
-			piHealth = health;
+
+			// Only update status if it changed
+			const statusJson = JSON.stringify(ingestionStatus);
+			if (statusJson !== lastStatusJson) {
+				status = ingestionStatus;
+				lastStatusJson = statusJson;
+			}
+
+			// Only update health if changed
+			const healthJson = JSON.stringify(health);
+			if (healthJson !== lastHealthJson) {
+				piHealth = health;
+				lastHealthJson = healthJson;
+			}
 		} catch (e) {
 			console.error('Failed to load status:', e);
 		} finally {
 			loading = false;
+			isInitialLoad = false;
 		}
 	}
 
@@ -76,6 +96,7 @@
 		discovering = true;
 		try {
 			discoveryResults = await discoverPIPoints(discoveryFilter, 100);
+			selectedPoints = new Set();
 		} catch (e) {
 			toasts.add({
 				type: 'error',
@@ -84,6 +105,67 @@
 			});
 		} finally {
 			discovering = false;
+		}
+	}
+
+	function togglePointSelection(sourceAddress: string) {
+		const point = discoveryResults.points.find((p: any) => (p.sourceAddress || p.name) === sourceAddress);
+		if (point?.existsInDatabase) return; // Don't allow selecting existing points
+		
+		const newSet = new Set(selectedPoints);
+		if (newSet.has(sourceAddress)) {
+			newSet.delete(sourceAddress);
+		} else {
+			newSet.add(sourceAddress);
+		}
+		selectedPoints = newSet;
+	}
+
+	function toggleSelectAll() {
+		// Only select points that don't exist in database
+		const availablePoints = discoveryResults.points.filter((p: any) => !p.existsInDatabase);
+		if (selectedPoints.size === availablePoints.length) {
+			selectedPoints = new Set();
+		} else {
+			selectedPoints = new Set(availablePoints.map((p: any) => p.sourceAddress || p.name));
+		}
+	}
+
+	async function handleAddPoints() {
+		if (selectedPoints.size === 0) {
+			toasts.add({
+				type: 'warning',
+				title: 'No points selected',
+				message: 'Please select at least one point to add'
+			});
+			return;
+		}
+
+		addingPoints = true;
+		try {
+			const pointsToAdd = discoveryResults.points.filter(
+				(p: any) => selectedPoints.has(p.sourceAddress || p.name)
+			);
+			
+			await addPIPoints(pointsToAdd);
+			
+			toasts.add({
+				type: 'success',
+				title: 'Points added',
+				message: `${selectedPoints.size} point(s) added to ingestion pipeline`
+			});
+			
+			selectedPoints.clear();
+			discoveryResults = null;
+			await loadStatus();
+		} catch (e) {
+			toasts.add({
+				type: 'error',
+				title: 'Failed to add points',
+				message: e instanceof Error ? e.message : 'Unknown error'
+			});
+		} finally {
+			addingPoints = false;
 		}
 	}
 
@@ -99,76 +181,37 @@
 	<div class="flex items-center justify-between">
 		<div>
 			<h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">Ingestion Control</h1>
-			<p class="text-gray-500 dark:text-gray-400">Manage PI System data collection</p>
-		</div>
-		<div class="flex items-center gap-3">
-			{#if status?.isRunning}
-				<button 
-					class="btn btn-danger"
-					onclick={handleStop}
-					disabled={!!actionLoading}
-				>
-					{#if actionLoading === 'stop'}
-						<svg class="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-						</svg>
-					{:else}
-						<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
-						</svg>
-					{/if}
-					Stop Ingestion
-				</button>
-			{:else}
-				<button 
-					class="btn btn-success"
-					onclick={handleStart}
-					disabled={!!actionLoading}
-				>
-					{#if actionLoading === 'start'}
-						<svg class="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-						</svg>
-					{:else}
-						<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-						</svg>
-					{/if}
-					Start Ingestion
-				</button>
-			{/if}
+			<p class="text-gray-500 dark:text-gray-400">Wind Farm Replay Data Ingestion</p>
 		</div>
 	</div>
 
 	<!-- Status Cards -->
 	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
 		<StatusCard 
-			status={status?.isRunning ? 'healthy' : 'degraded'}
+			status={status?.system?.isRunning ? 'healthy' : 'degraded'}
 			title="Pipeline Status"
-			subtitle={status?.isRunning ? 'Streaming data' : 'Stopped'}
+			subtitle={status?.system?.isRunning ? 'Streaming data' : 'Stopped'}
 			icon="📡"
-			loading={loading}
+			loading={isInitialLoad}
 		/>
 		<StatusCard 
-			status={piHealth?.connected ? 'healthy' : 'unhealthy'}
-			title="PI Connection"
-			subtitle={piHealth?.message || 'Unknown'}
+			status={status?.replayWorker?.isEnabled ? 'healthy' : 'unhealthy'}
+			title="Replay Worker"
+			subtitle={status?.replayWorker?.description || 'Wind Farm Replay'}
 			icon="🏭"
-			loading={loading}
+			loading={isInitialLoad}
 		/>
 		<MetricCard 
-			title="Points Configured"
-			value={status?.pointsConfigured ?? '—'}
+			title="Data Source"
+			value={status?.replayWorker?.dataSource?.split('/').pop() ?? '—'}
 			icon="📊"
-			loading={loading}
+			loading={isInitialLoad}
 		/>
 		<MetricCard 
-			title="Messages Published"
-			value={status?.messagesPublished?.toLocaleString() ?? '—'}
+			title="Active Connector"
+			value={status?.replayWorker?.isEnabled ? 'Replay Worker' : 'None'}
 			icon="📨"
-			loading={loading}
+			loading={isInitialLoad}
 		/>
 	</div>
 
@@ -191,7 +234,7 @@
 						<div class="flex justify-between">
 							<dt class="text-gray-500 dark:text-gray-400">Status</dt>
 							<dd>
-								{#if status.isRunning}
+								{#if status.system?.isRunning}
 									<span class="badge badge-success">Running</span>
 								{:else}
 									<span class="badge badge-neutral">Stopped</span>
@@ -199,19 +242,21 @@
 							</dd>
 						</div>
 						<div class="flex justify-between">
-							<dt class="text-gray-500 dark:text-gray-400">Poll Interval</dt>
-							<dd class="font-mono">{status.pollInterval}ms</dd>
-						</div>
-						<div class="flex justify-between">
-							<dt class="text-gray-500 dark:text-gray-400">Last Poll</dt>
-							<dd class="font-mono text-sm">
-								{status.lastPollTime ? new Date(status.lastPollTime).toLocaleString() : 'Never'}
+							<dt class="text-gray-500 dark:text-gray-400">Data Flow</dt>
+							<dd class="text-sm font-mono text-right max-w-xs break-words">
+								{status.system?.dataFlow || 'Unknown'}
 							</dd>
 						</div>
 						<div class="flex justify-between">
-							<dt class="text-gray-500 dark:text-gray-400">Errors</dt>
-							<dd class:text-red-500={status.errors > 0} class:text-emerald-500={status.errors === 0}>
-								{status.errors}
+							<dt class="text-gray-500 dark:text-gray-400">Active Sources</dt>
+							<dd class="text-sm text-right">
+								{status.system?.activeConnectors || 'None'}
+							</dd>
+						</div>
+						<div class="flex justify-between">
+							<dt class="text-gray-500 dark:text-gray-400">Note</dt>
+							<dd class="text-xs text-gray-500 text-right max-w-sm">
+								{status.system?.note || ''}
 							</dd>
 						</div>
 					</dl>
@@ -221,10 +266,10 @@
 			</div>
 		</div>
 
-		<!-- PI System -->
+		<!-- Replay Worker Details -->
 		<div class="card">
 			<div class="card-header">
-				<h2 class="font-semibold text-gray-900 dark:text-gray-100">PI System Connection</h2>
+				<h2 class="font-semibold text-gray-900 dark:text-gray-100">Replay Worker Details</h2>
 			</div>
 			<div class="card-body">
 				{#if loading}
@@ -233,100 +278,73 @@
 							<div class="skeleton h-6 w-full"></div>
 						{/each}
 					</div>
-				{:else if piHealth}
+				{:else if status?.replayWorker}
 					<dl class="space-y-4">
 						<div class="flex justify-between">
-							<dt class="text-gray-500 dark:text-gray-400">Connector Type</dt>
-							<dd>{piHealth.connectorType || 'Web API'}</dd>
-						</div>
-						<div class="flex justify-between">
-							<dt class="text-gray-500 dark:text-gray-400">Connected</dt>
+							<dt class="text-gray-500 dark:text-gray-400">Status</dt>
 							<dd>
-								{#if piHealth.connected}
-									<span class="badge badge-success">Yes</span>
+								{#if status.replayWorker.isEnabled}
+									<span class="badge badge-success">Enabled</span>
 								{:else}
-									<span class="badge badge-danger">No</span>
+									<span class="badge badge-neutral">Disabled</span>
 								{/if}
 							</dd>
 						</div>
 						<div class="flex justify-between">
-							<dt class="text-gray-500 dark:text-gray-400">Response Time</dt>
-							<dd class="font-mono">{piHealth.responseTimeMs?.toFixed(0) ?? '—'}ms</dd>
+							<dt class="text-gray-500 dark:text-gray-400">Description</dt>
+							<dd class="text-sm text-right max-w-xs">
+								{status.replayWorker.description || '—'}
+							</dd>
 						</div>
 						<div class="flex justify-between">
-							<dt class="text-gray-500 dark:text-gray-400">Message</dt>
-							<dd class="text-sm text-right max-w-[200px] truncate" title={piHealth.message}>
-								{piHealth.message || '—'}
+							<dt class="text-gray-500 dark:text-gray-400">Data Source</dt>
+							<dd class="text-sm font-mono text-right break-all">
+								{status.replayWorker.dataSource || '—'}
+							</dd>
+						</div>
+						<div class="flex justify-between items-start">
+							<dt class="text-gray-500 dark:text-gray-400">Monitor</dt>
+							<dd class="text-xs text-gray-500 text-right font-mono max-w-sm break-words">
+								{status.replayWorker.status || '—'}
 							</dd>
 						</div>
 					</dl>
 				{:else}
-					<p class="text-gray-500">Unable to connect to PI System</p>
+					<p class="text-gray-500">Replay worker information unavailable</p>
 				{/if}
 			</div>
 		</div>
 	</div>
 
-	<!-- Point Discovery -->
+	<!-- System Information -->
 	<div class="card">
 		<div class="card-header">
-			<h2 class="font-semibold text-gray-900 dark:text-gray-100">PI Point Discovery</h2>
+			<h2 class="font-semibold text-gray-900 dark:text-gray-100">System Information</h2>
 		</div>
 		<div class="card-body">
-			<div class="flex gap-4 mb-4">
-				<input
-					type="text"
-					class="input flex-1"
-					placeholder="Filter pattern (e.g., *BESS*, *MW*)"
-					bind:value={discoveryFilter}
-					onkeydown={(e) => e.key === 'Enter' && handleDiscover()}
-				/>
-				<button 
-					class="btn btn-primary"
-					onclick={handleDiscover}
-					disabled={discovering}
-				>
-					{#if discovering}
-						<svg class="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-						</svg>
-					{/if}
-					Discover Points
-				</button>
+			<div class="space-y-4">
+				<div>
+					<h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">About the Replay Worker</h3>
+					<p class="text-sm text-gray-600 dark:text-gray-400">
+						The Wind Farm Replay Worker simulates historical wind farm operations by replaying real SCADA data 
+						from the Kelmarsh Wind Farm. This data flows through Kafka to the ingestion worker, which processes 
+						and stores it in QuestDB for analysis.
+					</p>
+				</div>
+				<div>
+					<h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Data Flow</h3>
+					<p class="text-sm text-gray-600 dark:text-gray-400 font-mono">
+						{status?.system?.dataFlow || 'Replay Worker → Kafka → Ingestion Worker → QuestDB'}
+					</p>
+				</div>
+				{#if status?.system?.note}
+					<div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+						<p class="text-xs text-blue-800 dark:text-blue-300">
+							ℹ️ {status.system.note}
+						</p>
+					</div>
+				{/if}
 			</div>
-
-			{#if discoveryResults}
-				<div class="text-sm text-gray-500 mb-3">
-					Found {discoveryResults.count} points matching "{discoveryResults.filter}"
-				</div>
-				<div class="table-container max-h-64 overflow-y-auto">
-					<table class="table">
-						<thead class="sticky top-0">
-							<tr>
-								<th>Tag Name</th>
-								<th>Description</th>
-								<th>Units</th>
-								<th>Type</th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each discoveryResults.points as point}
-								<tr>
-									<td class="font-mono text-sm">{point.SourceAddress}</td>
-									<td class="max-w-[200px] truncate">{point.Description || '—'}</td>
-									<td>{point.EngineeringUnits || '—'}</td>
-									<td><span class="badge badge-neutral">{point.PointType}</span></td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
-				</div>
-			{:else}
-				<p class="text-gray-500 text-center py-8">
-					Enter a filter pattern and click "Discover Points" to search PI Server
-				</p>
-			{/if}
 		</div>
 	</div>
 </div>

@@ -38,7 +38,7 @@ export interface HealthStatus {
 }
 
 export async function getHealth(): Promise<HealthStatus> {
-	return fetchApi<HealthStatus>('/health');
+	return fetchApi<HealthStatus>('/api/health');
 }
 
 // Pipeline endpoints
@@ -181,28 +181,37 @@ export async function getHistory(
 // Suggestions
 export interface Suggestion {
 	id: string;
+	clusterId: string;
 	patternId: string;
 	patternName: string;
 	confidence: number;
-	status: 'Pending' | 'Approved' | 'Rejected' | 'Deferred';
+	pointCount: number;
+	status: number; // 0=Pending, 1=Approved, 2=Rejected, 3=Deferred, 4=Expired
 	createdAt: string;
-	reviewedAt?: string;
-	reviewedBy?: string;
-	rejectionReason?: string;
+	commonPrefix?: string;
 }
 
 export interface SuggestionDetail extends Suggestion {
-	matchedPoints: {
+	namingScore: number;
+	correlationScore: number;
+	rangeScore: number;
+	rateScore: number;
+	reason: string;
+	points: {
 		pointId: string;
 		pointName: string;
-		matchedRole: string;
-		roleConfidence: number;
+		suggestedRole: string | null;
+		roleConfidence: number | null;
 	}[];
-	patternDescription?: string;
-	patternRoles: {
-		roleName: string;
-		dataType: string;
-		required: boolean;
+	expectedRoles: {
+		id: string;
+		name: string;
+		description: string;
+		namingPatterns: string[];
+		expectedMinValue?: number;
+		expectedMaxValue?: number;
+		expectedUnits?: string;
+		isRequired: boolean;
 	}[];
 }
 

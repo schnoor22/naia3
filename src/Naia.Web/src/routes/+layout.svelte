@@ -4,6 +4,7 @@
 	import { onMount } from 'svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import ConnectionStatus from '$lib/components/ConnectionStatus.svelte';
+	import AuthGate from '$lib/components/AuthGate.svelte';
 	import { pendingCount, connectionState } from '$lib/stores/signalr';
 	import { initializeSignalR } from '$lib/services/signalr';
 
@@ -15,6 +16,8 @@
 		{ href: '/trends', label: 'Trend Viewer', icon: 'trends' },
 		{ href: '/patterns', label: 'Pattern Review', icon: 'patterns' },
 		{ href: '/ingestion', label: 'Ingestion', icon: 'ingestion' },
+		{ href: '/stack', label: 'Technology Stack', icon: 'stack' },
+		{ href: '/logs', label: 'System Logs', icon: 'logs' },
 	];
 
 	function isActive(href: string, currentPath: string): boolean {
@@ -31,6 +34,7 @@
 	<title>NAIA Command Center</title>
 </svelte:head>
 
+<AuthGate>
 <div class="flex h-screen overflow-hidden">
 	<!-- Sidebar -->
 	<aside 
@@ -59,7 +63,7 @@
 					href={item.href}
 					class="nav-link"
 					class:active
-					title={!sidebarOpen ? item.label : undefined}
+					aria-label={item.label}
 				>
 					<span class="flex-shrink-0 w-6 h-6 flex items-center justify-center">
 						{#if item.icon === 'dashboard'}
@@ -81,6 +85,14 @@
 						{:else if item.icon === 'ingestion'}
 							<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
 								<path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+							</svg>
+						{:else if item.icon === 'stack'}
+							<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M6.429 9.75L2.25 12l4.179 2.25m0-4.5l5.571 3 5.571-3m-11.142 0L2.25 7.5 12 2.25l9.75 5.25-4.179 2.25m0 0L21.75 12l-4.179 2.25m0 0l4.179 2.25L12 21.75 2.25 16.5l4.179-2.25m11.142 0l-5.571 3-5.571-3" />
+							</svg>
+						{:else if item.icon === 'logs'}
+							<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
 							</svg>
 						{/if}
 					</span>
@@ -149,3 +161,4 @@
 		</div>
 	</main>
 </div>
+</AuthGate>

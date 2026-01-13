@@ -248,7 +248,7 @@
 				<div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800">
 					<div>
 						<h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">{selectedSuggestion.patternName}</h3>
-						<p class="text-sm text-gray-500">{selectedSuggestion.patternDescription || 'Equipment pattern suggestion'}</p>
+						<p class="text-sm text-gray-500">{selectedSuggestion.reason}</p>
 					</div>
 					<button 
 						class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
@@ -266,7 +266,7 @@
 					<!-- Confidence -->
 					<div class="flex items-center gap-4">
 						<div class="flex-1">
-							<div class="text-sm text-gray-500 mb-1">Confidence Score</div>
+							<div class="text-sm text-gray-500 mb-1">Overall Confidence</div>
 							<div class="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
 								<div 
 									class="h-full bg-naia-500 transition-all"
@@ -279,36 +279,61 @@
 						</div>
 					</div>
 
+					<!-- Score Breakdown -->
+					<div class="grid grid-cols-2 gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+						<div>
+							<div class="text-xs text-gray-500">Naming</div>
+							<div class="text-lg font-semibold text-gray-900 dark:text-gray-100">{formatConfidence(selectedSuggestion.namingScore)}</div>
+						</div>
+						<div>
+							<div class="text-xs text-gray-500">Correlation</div>
+							<div class="text-lg font-semibold text-gray-900 dark:text-gray-100">{formatConfidence(selectedSuggestion.correlationScore)}</div>
+						</div>
+						<div>
+							<div class="text-xs text-gray-500">Range</div>
+							<div class="text-lg font-semibold text-gray-900 dark:text-gray-100">{formatConfidence(selectedSuggestion.rangeScore)}</div>
+						</div>
+						<div>
+							<div class="text-xs text-gray-500">Rate</div>
+							<div class="text-lg font-semibold text-gray-900 dark:text-gray-100">{formatConfidence(selectedSuggestion.rateScore)}</div>
+						</div>
+					</div>
+
 					<!-- Matched Points -->
 					<div>
-						<h4 class="font-medium text-gray-900 dark:text-gray-100 mb-2">Matched Points</h4>
+						<h4 class="font-medium text-gray-900 dark:text-gray-100 mb-2">Matched Points ({selectedSuggestion.points.length})</h4>
 						<div class="space-y-2">
-							{#each selectedSuggestion.matchedPoints as match}
+							{#each selectedSuggestion.points as match}
 								<div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
 									<div>
 										<div class="font-mono text-sm">{match.pointName}</div>
-										<div class="text-xs text-gray-500">Role: {match.matchedRole}</div>
+										{#if match.suggestedRole}
+											<div class="text-xs text-gray-500">Suggested: {match.suggestedRole}</div>
+										{/if}
 									</div>
-									<span class="badge badge-info">
-										{Math.round(match.roleConfidence * 100)}%
-									</span>
+									{#if match.roleConfidence}
+										<span class="badge badge-info">
+											{Math.round(match.roleConfidence * 100)}%
+										</span>
+									{/if}
 								</div>
 							{/each}
 						</div>
 					</div>
 
 					<!-- Expected Roles -->
-					{#if selectedSuggestion.patternRoles.length > 0}
+					{#if selectedSuggestion.expectedRoles.length > 0}
 						<div>
-							<h4 class="font-medium text-gray-900 dark:text-gray-100 mb-2">Pattern Roles</h4>
-							<div class="flex flex-wrap gap-2">
-								{#each selectedSuggestion.patternRoles as role}
-									<span class="badge" class:badge-success={role.required} class:badge-neutral={!role.required}>
-										{role.roleName}
-										{#if role.required}
-											<span class="ml-1">*</span>
+							<h4 class="font-medium text-gray-900 dark:text-gray-100 mb-2">Expected Pattern Roles</h4>
+							<div class="space-y-2">
+								{#each selectedSuggestion.expectedRoles as role}
+									<div class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+										<div class="font-medium text-sm">{role.name}</div>
+										<div class="text-xs text-gray-500 mt-1">{role.description}</div>
+										{#if role.namingPatterns.length > 0}
+											<div class="text-xs text-gray-400 mt-1">Patterns: {role.namingPatterns.join(', ')}</div>
 										{/if}
-									</span>
+									</div>
 								{/each}
 							</div>
 						</div>
