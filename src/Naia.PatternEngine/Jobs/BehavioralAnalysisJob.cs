@@ -125,7 +125,7 @@ public sealed class BehavioralAnalysisJob : IBehavioralAnalysisJob
             points.Add(new PointInfo
             {
                 Id = reader.GetGuid(0),
-                IdSeq = reader.GetInt32(1),
+                IdSeq = reader.GetInt64(1),  // Fixed: Use Int64 for BIGINT column
                 Name = reader.GetString(2),
                 DataSourceId = reader.GetGuid(3)
             });
@@ -193,13 +193,13 @@ public sealed class BehavioralAnalysisJob : IBehavioralAnalysisJob
         return results;
     }
 
-    private async Task<Dictionary<int, QuestDbSummary>> GetPointSummariesAsync(
-        int[] pointIdSeqs,
+    private async Task<Dictionary<long, QuestDbSummary>> GetPointSummariesAsync(
+        long[] pointIdSeqs,  // Fixed: Changed to long[]
         int windowHours,
         int minSamples,
         CancellationToken cancellationToken)
     {
-        var summaryByPointSeq = new Dictionary<int, QuestDbSummary>();
+        var summaryByPointSeq = new Dictionary<long, QuestDbSummary>();
         
         try
         {
@@ -232,7 +232,7 @@ public sealed class BehavioralAnalysisJob : IBehavioralAnalysisJob
 
             while (await reader.ReadAsync(cancellationToken))
             {
-                var pointIdSeq = reader.GetInt32(0);
+                var pointIdSeq = reader.GetInt64(0);  // Fixed: Use Int64 for BIGINT/LONG column
                 summaryByPointSeq[pointIdSeq] = new QuestDbSummary
                 {
                     SampleCount = reader.GetInt64(1),
@@ -254,7 +254,7 @@ public sealed class BehavioralAnalysisJob : IBehavioralAnalysisJob
     }
 
     private async Task<List<double>> GetPointValuesAsync(
-        int pointIdSeq,
+        long pointIdSeq,  // Fixed: Use long for BIGINT column
         int windowHours,
         CancellationToken cancellationToken)
     {
@@ -294,7 +294,7 @@ public sealed class BehavioralAnalysisJob : IBehavioralAnalysisJob
     }
 
     private async Task<List<DateTime>> GetPointTimestampsAsync(
-        int pointIdSeq,
+        long pointIdSeq,  // Fixed: Use long for BIGINT column
         int windowHours,
         CancellationToken cancellationToken)
     {
@@ -422,7 +422,7 @@ public sealed class BehavioralAnalysisJob : IBehavioralAnalysisJob
 internal sealed record PointInfo
 {
     public Guid Id { get; init; }
-    public int IdSeq { get; init; }
+    public long IdSeq { get; init; }  // Fixed: Use long to match BIGINT column
     public required string Name { get; init; }
     public Guid DataSourceId { get; init; }
 }
@@ -440,7 +440,7 @@ internal sealed record QuestDbSummary
 internal sealed record BehaviorResult
 {
     public Guid PointId { get; init; }
-    public int PointIdSeq { get; init; }
+    public long PointIdSeq { get; init; }  // Fixed: Use long for BIGINT column
     public required string PointName { get; init; }
     public int SampleCount { get; init; }
     public DateTime WindowStart { get; init; }

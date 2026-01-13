@@ -203,7 +203,7 @@ export interface SuggestionDetail extends Suggestion {
 		suggestedRole: string | null;
 		roleConfidence: number | null;
 	}[];
-	expectedRoles: {
+	expectedRoles?: {
 		id: string;
 		name: string;
 		description: string;

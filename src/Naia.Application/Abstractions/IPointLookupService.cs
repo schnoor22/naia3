@@ -54,4 +54,10 @@ public record PointLookupResult
     public string? EngineeringUnits { get; init; }
     public string? DataType { get; init; }
     public string? Description { get; init; }
+    
+    /// <summary>
+    /// Indicates whether the SequenceId has been assigned by the database.
+    /// Points without a SequenceId (HasSequenceId=false) can still be looked up by Name or Id.
+    /// </summary>
+    public bool HasSequenceId { get; init; } = true;
 }

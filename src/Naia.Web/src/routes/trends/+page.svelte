@@ -3,6 +3,7 @@
 	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
 	import { searchPoints, getPoint, getHistory, type Point, type HistoricalDataResponse } from '$lib/services/api';
+	import Icon from '$lib/components/Icon.svelte';
 
 	// Dynamically import Plotly only in browser
 	let Plotly: typeof import('plotly.js-dist-min') | null = null;
@@ -96,16 +97,16 @@
 	}
 
 	function addPoint(point: Point) {
-		if (selectedPoints.length >= 8) return;
-		selectedPoints = [...selectedPoints, point];
+		if (selectedPoints && Array.isArray(selectedPoints) && selectedPoints.length >= 8) return;
+		selectedPoints = [...(selectedPoints || []), point];
 		closeSearch();
 		// Load chart data - loadChartData will wait for element to be ready
 		loadChartData();
 	}
 
 	function removePoint(point: Point) {
-		selectedPoints = selectedPoints.filter(p => p.id !== point.id);
-		if (selectedPoints.length === 0) {
+		selectedPoints = (selectedPoints || []).filter(p => p.id !== point.id);
+		if (!selectedPoints || !Array.isArray(selectedPoints) || selectedPoints.length === 0) {
 			trendData = [];
 			if (chartElement && Plotly) {
 				Plotly.purge(chartElement);
@@ -117,13 +118,13 @@
 
 	function changeTimeRange(range: typeof timeRanges[0]) {
 		selectedRange = range;
-		if (selectedPoints.length > 0) {
+		if (selectedPoints && Array.isArray(selectedPoints) && selectedPoints.length > 0) {
 			loadChartData();
 		}
 	}
 
 	async function loadChartData() {
-		if (selectedPoints.length === 0) {
+		if (!selectedPoints || !Array.isArray(selectedPoints) || selectedPoints.length === 0) {
 			trendData = [];
 			if (chartElement && Plotly) {
 				Plotly.purge(chartElement);
@@ -209,7 +210,7 @@
 			if (!data || !data.data || data.data.length === 0) return;
 
 			const point = points[index];
-			const color = seriesColors[index % seriesColors.length];
+			const color = seriesColors && Array.isArray(seriesColors) ? seriesColors[index % seriesColors.length] : '#000000';
 
 			const timestamps = data.data.map(d => {
 				const ts = d.timestamp.includes('Z') ? d.timestamp : d.timestamp + 'Z';
@@ -397,9 +398,7 @@
 								onclick={() => removePoint(point)}
 								title="Remove"
 							>
-								<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5">
-									<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-								</svg>
+								<Icon name="close" size="14" />
 							</button>
 						</span>
 					{/each}
@@ -411,9 +410,7 @@
 									{showSearch ? 'border-naia-500 text-naia-500 bg-naia-500/10' : 'border-gray-400 dark:border-gray-600 text-gray-500 hover:border-naia-500 hover:text-naia-500'}"
 								onclick={() => showSearch ? closeSearch() : openSearch()}
 							>
-								<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
-									<path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-								</svg>
+								<Icon name="add" size="16" />
 								Add Tag
 								<span class="text-xs opacity-60">({selectedPoints.length}/8)</span>
 							</button>
@@ -432,10 +429,7 @@
 									<div class="max-h-80 overflow-y-auto">
 										{#if searchLoading}
 											<div class="p-6 text-center text-gray-500">
-												<svg class="w-6 h-6 animate-spin mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-													<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-													<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-												</svg>
+												<Icon name="spinner" size="24" class="mx-auto mb-2" />
 												Loading tags...
 											</div>
 										{:else if searchResults.length > 0}
@@ -458,9 +452,7 @@
 											{/each}
 										{:else}
 											<div class="p-6 text-center text-gray-500">
-												<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8 mx-auto mb-2 opacity-50">
-													<path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-												</svg>
+												<Icon name="search" size="32" class="mx-auto mb-2 opacity-50" />
 												{#if searchQuery}
 													No tags found for "{searchQuery}"
 												{:else}
@@ -508,18 +500,13 @@
 		{#if loading}
 			<div class="flex items-center justify-center h-[450px] bg-gray-900/30">
 				<div class="flex flex-col items-center gap-3 text-gray-400">
-					<svg class="w-8 h-8 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-					</svg>
+					<Icon name="spinner" size="32" class="text-naia-500" />
 					<span>Loading trend data...</span>
 				</div>
 			</div>
 		{:else if selectedPoints.length === 0}
 			<div class="flex flex-col items-center justify-center h-[450px] text-gray-500 bg-gray-900/20">
-				<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" class="w-16 h-16 mb-4 opacity-30">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605" />
-				</svg>
+				<Icon name="trends" size="64" class="mb-4 opacity-30" />
 				<p class="text-lg font-medium mb-1">No Tags Selected</p>
 				<p class="text-sm opacity-75">Click "Add Tag" to select historian points to trend</p>
 			</div>

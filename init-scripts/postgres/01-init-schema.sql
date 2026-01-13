@@ -22,11 +22,13 @@ CREATE INDEX idx_data_sources_enabled ON data_sources(is_enabled);
 -- ===========================================================================
 -- POINTS
 -- ===========================================================================
-CREATE SEQUENCE IF NOT EXISTS point_id_seq START 1;
+-- Sequence for efficient time-series storage in QuestDB
+CREATE SEQUENCE IF NOT EXISTS point_sequence_id_seq START 1;
 
 CREATE TABLE IF NOT EXISTS points (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    point_id_seq BIGINT DEFAULT nextval('point_id_seq') UNIQUE NOT NULL,
+    -- IMPORTANT: Column name matches EF Core mapping in NaiaDbContext.cs
+    point_sequence_id BIGINT DEFAULT nextval('point_sequence_id_seq') UNIQUE NOT NULL,
     name VARCHAR(500) NOT NULL,
     data_source_id UUID REFERENCES data_sources(id) ON DELETE CASCADE,
     address VARCHAR(500), -- OPC NodeId, PI tag, Modbus register, etc.
@@ -54,7 +56,7 @@ CREATE TABLE IF NOT EXISTS points (
 
 CREATE INDEX idx_points_data_source ON points(data_source_id);
 CREATE INDEX idx_points_enabled ON points(is_enabled);
-CREATE INDEX idx_points_seq ON points(point_id_seq);
+CREATE INDEX idx_points_sequence_id ON points(point_sequence_id);
 CREATE INDEX idx_points_address ON points(address);
 
 -- ===========================================================================

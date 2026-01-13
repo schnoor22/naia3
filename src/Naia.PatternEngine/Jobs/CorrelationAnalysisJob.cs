@@ -139,7 +139,7 @@ public sealed class CorrelationAnalysisJob : ICorrelationAnalysisJob
             stats.Add(new BehaviorStat
             {
                 PointId = reader.GetGuid(0),
-                PointIdSeq = reader.GetInt32(1),
+                PointIdSeq = reader.GetInt64(1),  // Fixed: Use Int64 for BIGINT column
                 PointName = reader.GetString(2),
                 MeanValue = reader.GetDouble(3),
                 StdDeviation = reader.GetDouble(4),
@@ -255,8 +255,8 @@ public sealed class CorrelationAnalysisJob : ICorrelationAnalysisJob
 
     private async Task<double?> CalculatePairCorrelationAsync(
         NpgsqlConnection conn,
-        int pointIdSeq1,
-        int pointIdSeq2,
+        long pointIdSeq1,  // Fixed: Use long for BIGINT column
+        long pointIdSeq2,  // Fixed: Use long for BIGINT column
         int windowHours,
         int minSamples,
         CancellationToken cancellationToken)
@@ -365,7 +365,7 @@ public sealed class CorrelationAnalysisJob : ICorrelationAnalysisJob
 internal sealed record BehaviorStat
 {
     public Guid PointId { get; init; }
-    public int PointIdSeq { get; init; }
+    public long PointIdSeq { get; init; }  // Fixed: BIGINT/LONG not INT
     public required string PointName { get; init; }
     public double MeanValue { get; init; }
     public double StdDeviation { get; init; }
@@ -385,8 +385,8 @@ internal sealed record CorrelationResult
 {
     public Guid PointId1 { get; init; }
     public Guid PointId2 { get; init; }
-    public int PointIdSeq1 { get; init; }
-    public int PointIdSeq2 { get; init; }
+    public long PointIdSeq1 { get; init; }  // Fixed: BIGINT/LONG not INT
+    public long PointIdSeq2 { get; init; }  // Fixed: BIGINT/LONG not INT
     public double Correlation { get; init; }
     public int SampleCount { get; init; }
     public DateTime CalculatedAt { get; init; }

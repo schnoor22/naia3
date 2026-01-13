@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Naia.Application.Abstractions;
+using Naia.Domain.Entities;
 using Naia.Domain.ValueObjects;
 using StackExchange.Redis;
 
@@ -32,6 +34,7 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
     private readonly ICurrentValueCache _currentValueCache;
     private readonly IIdempotencyStore _idempotencyStore;
     private readonly IPointLookupService _pointLookup;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly IConnectionMultiplexer _redis;
     
     private readonly InternalPipelineMetrics _metrics = new();
@@ -47,6 +50,7 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
         ICurrentValueCache currentValueCache,
         IIdempotencyStore idempotencyStore,
         IPointLookupService pointLookup,
+        IServiceScopeFactory scopeFactory,
         IConnectionMultiplexer redis,
         ILogger<IngestionPipeline> logger)
     {
@@ -57,6 +61,7 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
         _currentValueCache = currentValueCache;
         _idempotencyStore = idempotencyStore;
         _pointLookup = pointLookup;
+        _scopeFactory = scopeFactory;
         _redis = redis;
         _logger = logger;
     }
@@ -314,8 +319,8 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
     
     /// <summary>
     /// Enrich batch by resolving PointSequenceIds from PointNames via lookup service.
-    /// This is necessary for replay connectors that publish with PointSequenceId=0
-    /// and must be looked up from the PointName.
+    /// AUTO-REGISTRATION: If a point doesn't exist, it will be created automatically.
+    /// This enables zero-config data ingestion - just send data and points are created on demand.
     /// </summary>
     private async Task<DataPointBatch> EnrichBatchWithPointSequenceIdsAsync(
         DataPointBatch batch,
@@ -323,7 +328,8 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
         CancellationToken cancellationToken)
     {
         var enrichedPoints = new List<DataPoint>();
-        int updated = 0;
+        int resolved = 0;
+        int autoRegistered = 0;
         
         foreach (var point in batch.Points)
         {
@@ -334,35 +340,42 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
                 continue;
             }
             
-            // Try to resolve from PointName
+            // Must have PointName for lookup/registration
             if (string.IsNullOrEmpty(point.PointName))
             {
-                _logger.LogWarning("Batch {BatchId}: Point has no PointName to resolve SequenceId", batchId);
+                _logger.LogWarning("Batch {BatchId}: Point has no PointName", batchId);
                 enrichedPoints.Add(point);
                 continue;
             }
             
             try
             {
+                // Try lookup first
                 var lookup = await _pointLookup.GetByNameAsync(point.PointName, cancellationToken);
-                if (lookup != null)
+                
+                // AUTO-REGISTRATION: Create point if not found
+                if (lookup == null || !lookup.HasSequenceId)
                 {
-                    // Create new DataPoint with resolved SequenceId
-                    var enrichedPoint = new DataPoint
+                    lookup = await AutoRegisterPointAsync(point.PointName, batch.DataSourceId, cancellationToken);
+                    if (lookup != null) autoRegistered++;
+                }
+                
+                if (lookup != null && lookup.SequenceId > 0)
+                {
+                    enrichedPoints.Add(new DataPoint
                     {
                         PointSequenceId = lookup.SequenceId,
                         PointName = point.PointName,
                         Timestamp = point.Timestamp,
                         Value = point.Value,
                         Quality = point.Quality
-                    };
-                    enrichedPoints.Add(enrichedPoint);
-                    updated++;
+                    });
+                    resolved++;
                 }
                 else
                 {
                     _logger.LogWarning(
-                        "Batch {BatchId}: Could not resolve PointName '{PointName}' to SequenceId",
+                        "Batch {BatchId}: Could not resolve or register '{PointName}'",
                         batchId, point.PointName);
                     enrichedPoints.Add(point);
                 }
@@ -370,30 +383,79 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
             catch (Exception ex)
             {
                 _logger.LogWarning(ex,
-                    "Batch {BatchId}: Failed to lookup PointName '{PointName}'",
+                    "Batch {BatchId}: Failed for '{PointName}'",
                     batchId, point.PointName);
                 enrichedPoints.Add(point);
             }
         }
         
-        if (updated > 0)
+        if (resolved > 0 || autoRegistered > 0)
         {
             _logger.LogInformation(
-                "Batch {BatchId}: Enriched {Updated} points with PointSequenceIds via name lookup",
-                batchId, updated);
-            
-            // Return new batch with enriched points
-            return new DataPointBatch
-            {
-                Points = enrichedPoints.AsReadOnly(),
-                DataSourceId = batch.DataSourceId,
-                BatchId = batch.BatchId,
-                CreatedAt = batch.CreatedAt
-            };
+                "Batch {BatchId}: Resolved {Resolved} points ({AutoRegistered} auto-registered)",
+                batchId, resolved, autoRegistered);
         }
         
-        // No enrichment needed, return original batch
-        return batch;
+        return new DataPointBatch
+        {
+            Points = enrichedPoints.AsReadOnly(),
+            DataSourceId = batch.DataSourceId,
+            BatchId = batch.BatchId,
+            CreatedAt = batch.CreatedAt
+        };
+    }
+    
+    /// <summary>
+    /// Auto-register a new point when first seen. Creates in PostgreSQL and refreshes cache.
+    /// This is the key to NAIA's zero-config philosophy - points appear automatically.
+    /// </summary>
+    private async Task<PointLookupResult?> AutoRegisterPointAsync(
+        string pointName,
+        string? dataSourceIdString,
+        CancellationToken cancellationToken)
+    {
+        // Parse DataSourceId if provided
+        Guid? dataSourceId = null;
+        if (!string.IsNullOrEmpty(dataSourceIdString) && Guid.TryParse(dataSourceIdString, out var parsed))
+        {
+            dataSourceId = parsed;
+        }
+        
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var pointRepo = scope.ServiceProvider.GetRequiredService<IPointRepository>();
+            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            
+            // Double-check it doesn't exist (race condition protection)
+            var existing = await _pointLookup.GetByNameAsync(pointName, cancellationToken);
+            if (existing != null && existing.HasSequenceId) return existing;
+            
+            // Create the point with sensible defaults
+            var newPoint = Point.Create(
+                name: pointName,
+                dataSourceId: dataSourceId,
+                description: $"Auto-registered {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}"
+            );
+            
+            await pointRepo.AddAsync(newPoint, cancellationToken);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+            
+            _logger.LogInformation(
+                "✨ Auto-registered point: {PointName} → {PointId}",
+                pointName, newPoint.Id);
+            
+            // Refresh cache to pick up the new point with its DB-assigned SequenceId
+            await _pointLookup.RefreshCacheAsync(cancellationToken);
+            
+            // Return the newly cached lookup
+            return await _pointLookup.GetByNameAsync(pointName, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to auto-register point: {PointName}", pointName);
+            return null;
+        }
     }
     
     public async ValueTask DisposeAsync()

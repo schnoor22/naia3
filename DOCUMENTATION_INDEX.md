@@ -64,6 +64,34 @@ Complete guide to NAIA system documentation and resources.
 
 ---
 
+### 5. **CSV_REPLAY_GUIDE.md** - Historical Data Replay (NEW)
+   - Load historical CSV data for training
+   - Multi-site support with timezone conversion
+   - Privacy via prefix stripping
+   - Bad status handling
+   - Pattern training workflow
+
+   **Use this if you need to:**
+   - Load historical data from CSV files
+   - Train pattern recognition across multiple sites
+   - Handle timezone conversion
+   - Strip privacy-sensitive tag prefixes
+
+---
+
+### 6. **CSV_REPLAY_QUICKSTART.md** - Data Arrival Checklist (NEW)
+   - Quick checklist for when data arrives
+   - Site-by-site preprocessing steps
+   - Configuration examples
+   - Deployment and monitoring
+
+   **Use this when:**
+   - Real data arrives from sites
+   - You need to quickly prepare and load data
+   - Setting up multi-site CSV replay
+
+---
+
 ## 🎯 Quick Navigation by Task
 
 ### "The system is down!"
@@ -102,6 +130,18 @@ Complete guide to NAIA system documentation and resources.
 2. Create files following the pattern
 3. Register in ServiceCollectionExtensions
 4. Deploy
+
+### "I have historical CSV data to load"
+1. Read: [CSV_REPLAY_QUICKSTART.md](CSV_REPLAY_QUICKSTART.md) - Quick checklist
+2. Or detailed: [CSV_REPLAY_GUIDE.md](CSV_REPLAY_GUIDE.md) - Complete guide
+3. Run preprocessing: `.\preprocess-site-data.ps1`
+4. Deploy and monitor
+
+### "I want to train patterns across multiple sites"
+1. Load data: [CSV_REPLAY_GUIDE.md - Pattern Training Workflow](CSV_REPLAY_GUIDE.md#pattern-training-workflow)
+2. Manually tag first site equipment types
+3. Let pattern engine analyze
+4. Approve suggestions for other sites
 
 ### "The server is running slow"
 1. Check: [QUICK_REFERENCE.md - Quick Troubleshooting](QUICK_REFERENCE.md#quick-troubleshooting)

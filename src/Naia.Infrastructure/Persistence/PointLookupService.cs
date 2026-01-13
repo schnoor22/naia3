@@ -75,18 +75,21 @@ public sealed class PointLookupService : IPointLookupService, IHostedService, ID
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<NaiaDbContext>();
             
+            // Load ALL points, not just those with SequenceId
+            // Points without SequenceId will be cached by name for name-based lookups
+            // This prevents data loss during the gap between Point creation and SequenceId assignment
             var points = await db.Points
                 .AsNoTracking()
-                .Where(p => p.PointSequenceId.HasValue)
                 .Select(p => new PointLookupResult
                 {
                     Id = p.Id,
-                    SequenceId = p.PointSequenceId!.Value,
+                    SequenceId = p.PointSequenceId ?? 0,  // 0 means not yet assigned
                     Name = p.Name,
                     DataSourceId = p.DataSourceId,
                     EngineeringUnits = p.EngineeringUnits,
                     DataType = p.ValueType.ToString(),
-                    Description = p.Description
+                    Description = p.Description,
+                    HasSequenceId = p.PointSequenceId.HasValue  // Track if SequenceId is assigned
                 })
                 .ToListAsync(ct);
 
@@ -97,10 +100,23 @@ public sealed class PointLookupService : IPointLookupService, IHostedService, ID
             _byDataSource.Clear();
 
             var dataSourceGroups = new Dictionary<Guid, List<PointLookupResult>>();
+            var pointsWithSequenceId = 0;
+            var pointsWithoutSequenceId = 0;
 
             foreach (var point in points)
             {
-                _bySequenceId[point.SequenceId] = point;
+                // Only add to SequenceId cache if it has a valid SequenceId
+                if (point.HasSequenceId && point.SequenceId > 0)
+                {
+                    _bySequenceId[point.SequenceId] = point;
+                    pointsWithSequenceId++;
+                }
+                else
+                {
+                    pointsWithoutSequenceId++;
+                }
+                
+                // Always cache by Id and Name for lookups
                 _byId[point.Id] = point;
                 _byName[point.Name] = point;
 
@@ -124,8 +140,15 @@ public sealed class PointLookupService : IPointLookupService, IHostedService, ID
             _lastRefreshTime = DateTime.UtcNow;
 
             _logger.LogInformation(
-                "Point lookup cache refreshed: {PointCount} points from {DataSourceCount} data sources",
-                points.Count, dataSourceGroups.Count);
+                "Point lookup cache refreshed: {TotalPoints} points ({WithSequenceId} with SequenceId, {WithoutSequenceId} pending) from {DataSourceCount} data sources",
+                points.Count, pointsWithSequenceId, pointsWithoutSequenceId, dataSourceGroups.Count);
+            
+            if (pointsWithoutSequenceId > 0)
+            {
+                _logger.LogWarning(
+                    "{Count} points do not have PointSequenceId assigned - data for these points will use name-based lookup",
+                    pointsWithoutSequenceId);
+            }
         }
         catch (Exception ex)
         {

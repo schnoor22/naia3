@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { searchPoints, getDataSources, getCurrentValue, getHistory, type Point, type DataSource, type HistoricalDataResponse } from '$lib/services/api';
+	import Icon from '$lib/components/Icon.svelte';
 
 	// Dynamically import Plotly only in browser (it uses 'self' which doesn't exist in SSR)
 	let Plotly: typeof import('plotly.js-dist-min') | null = null;
@@ -320,9 +321,9 @@
 						bind:value={searchQuery}
 						onkeydown={(e) => e.key === 'Enter' && handleSearch()}
 					/>
-					<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-					</svg>
+					<span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+						<Icon name="search" size="20" />
+					</span>
 				</div>
 			</div>
 
@@ -399,7 +400,7 @@
 								<td></td>
 							</tr>
 						{/each}
-					{:else if points.length === 0}
+					{:else if points && Array.isArray(points) && points.length === 0}
 						<tr>
 							<td colspan="8" class="text-center py-8 text-gray-500">
 								No points found matching your criteria
@@ -453,9 +454,7 @@
 										onclick={() => openTrend(point)}
 										title="View trend"
 									>
-										<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-											<path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-										</svg>
+										<Icon name="trends" size="16" />
 										Trend
 									</button>
 								</td>
@@ -510,9 +509,7 @@
 					onclick={closeTrend}
 					aria-label="Close trend modal"
 				>
-					<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-					</svg>
+					<Icon name="close" size="20" />
 				</button>
 			</div>
 			
@@ -540,10 +537,7 @@
 				{#if trendLoading}
 					<div class="h-64 flex items-center justify-center">
 						<div class="flex flex-col items-center gap-2 text-gray-400">
-							<svg class="w-8 h-8 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-							</svg>
+							<Icon name="spinner" size="32" class="text-naia-500" />
 							<span>Loading trend data...</span>
 						</div>
 					</div>
@@ -551,9 +545,7 @@
 					<div class="h-64 flex items-center justify-center">
 						<div class="text-center">
 							<div class="text-red-400 mb-2">
-								<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-12 h-12 mx-auto">
-									<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-								</svg>
+								<Icon name="warning" size="48" class="mx-auto" />
 							</div>
 							<p class="text-red-400 font-medium">{trendError}</p>
 							<button class="mt-2 text-sm text-teal-500 hover:underline" onclick={loadTrendData}>Retry</button>
@@ -587,9 +579,7 @@
 				{:else}
 					<div class="h-64 flex items-center justify-center">
 						<div class="text-center text-gray-400">
-							<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-12 h-12 mx-auto mb-2">
-								<path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-							</svg>
+							<Icon name="trends" size="48" class="mx-auto mb-2 opacity-50" />
 							<p>No data available for this time range</p>
 							<p class="text-sm mt-1">Try selecting a different time range or check if data is being collected</p>
 						</div>

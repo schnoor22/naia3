@@ -140,11 +140,18 @@ public static class ServiceCollectionExtensions
             services.AddHostedService<PIIngestionWorker>();
         }
         
-        // Wind Farm Replay Connector (Kelmarsh data)
+        // Wind Farm Replay Connector (Kelmarsh data - legacy)
         var replayEnabled = configuration.GetValue<bool>("WindFarmReplay:Enabled", false);
         if (replayEnabled)
         {
             services.AddWindFarmReplayConnector(configuration);
+        }
+        
+        // Generic CSV Replay Connector (Multi-site industrial data)
+        var genericCsvEnabled = configuration.GetValue<bool>("GenericCsvReplay:Enabled", false);
+        if (genericCsvEnabled)
+        {
+            services.AddGenericCsvReplayConnector(configuration);
         }
         
         // OPC UA Simulator Connector
@@ -167,6 +174,28 @@ public static class ServiceCollectionExtensions
         {
             services.AddEiaGridApiConnector(configuration);
         }
+        
+        return services;
+    }
+    
+    /// <summary>
+    /// Adds Generic CSV Replay connector services.
+    /// Replays CSV data from multiple industrial sites.
+    /// </summary>
+    public static IServiceCollection AddGenericCsvReplayConnector(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // Register options
+        services.AddOptions<GenericCsvReplayOptions>()
+            .Bind(configuration.GetSection(GenericCsvReplayOptions.SectionName))
+            .ValidateDataAnnotations();
+        
+        // Register CSV reader
+        services.AddSingleton<GenericCsvReader>();
+        
+        // Register the replay worker
+        services.AddHostedService<GenericCsvReplayWorker>();
         
         return services;
     }

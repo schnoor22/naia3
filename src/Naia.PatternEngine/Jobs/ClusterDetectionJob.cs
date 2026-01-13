@@ -342,14 +342,16 @@ public sealed class ClusterDetectionJob : IClusterDetectionJob
 
         // Fetch point names for the cluster
         var pointNamesSql = "SELECT id, name FROM points WHERE id = ANY(@PointIds) ORDER BY id";
-        var pointNamesCmd = new NpgsqlCommand(pointNamesSql, conn);
-        pointNamesCmd.Parameters.AddWithValue("@PointIds", cluster.PointIds.ToArray());
         
         var pointNameMap = new Dictionary<Guid, string>();
-        await using var reader = await pointNamesCmd.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
+        await using (var pointNamesCmd = new NpgsqlCommand(pointNamesSql, conn))
         {
-            pointNameMap[reader.GetGuid(0)] = reader.GetString(1);
+            pointNamesCmd.Parameters.AddWithValue("@PointIds", cluster.PointIds.ToArray());
+            await using var reader = await pointNamesCmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                pointNameMap[reader.GetGuid(0)] = reader.GetString(1);
+            }
         }
 
         // Map point IDs to their names in order

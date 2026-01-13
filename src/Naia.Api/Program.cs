@@ -118,11 +118,13 @@ app.UseCors("AllowUI");
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-if (app.Environment.IsDevelopment())
+// Swagger enabled in all environments for debugging
+app.UseSwagger();
+app.UseSwaggerUI(c =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "NAIA API v3.0");
+    c.RoutePrefix = "swagger";
+});
 
 // =============================================================================
 // PATTERN FLYWHEEL - Hangfire Dashboard & Job Scheduling
@@ -184,6 +186,31 @@ app.MapGet("/api/health", async (
 })
 .WithName("HealthCheck")
 .WithTags("System");
+
+// Version endpoint for debugging
+var apiStartTime = DateTime.UtcNow;
+app.MapGet("/api/version", () =>
+{
+    var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+    var version = assembly.GetName().Version?.ToString() ?? "3.0.0";
+    var buildDate = System.IO.File.GetLastWriteTimeUtc(assembly.Location);
+    
+    return Results.Ok(new
+    {
+        version = "3.0.0",
+        apiVersion = version,
+        buildDate = buildDate.ToString("yyyy-MM-dd HH:mm:ss UTC"),
+        apiStartTime = apiStartTime.ToString("yyyy-MM-dd HH:mm:ss UTC"),
+        uptime = (DateTime.UtcNow - apiStartTime).ToString(@"d\.hh\:mm\:ss"),
+        environment = app.Environment.EnvironmentName,
+        machineName = Environment.MachineName,
+        dotnetVersion = Environment.Version.ToString(),
+        timestamp = DateTime.UtcNow
+    });
+})
+.WithName("GetVersion")
+.WithTags("System")
+.WithOpenApi();
 
 // ============================================================================
 // DATA SOURCE ENDPOINTS

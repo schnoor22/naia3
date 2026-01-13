@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { getPendingSuggestions, getSuggestion, approveSuggestion, rejectSuggestion, deferSuggestion, type Suggestion, type SuggestionDetail } from '$lib/services/api';
 	import { pendingCount, toasts } from '$lib/stores/signalr';
+	import Icon from '$lib/components/Icon.svelte';
 
 	let suggestions = $state<Suggestion[]>([]);
 	let totalSuggestions = $state(0);
@@ -23,11 +24,14 @@
 		error = null;
 		try {
 			const result = await getPendingSuggestions(0, 50);
-			suggestions = result.data;
-			totalSuggestions = result.total;
-			pendingCount.set(result.total);
+			// Defensive: ensure data is always an array
+			suggestions = Array.isArray(result?.data) ? result.data : [];
+			totalSuggestions = result?.total ?? 0;
+			pendingCount.set(totalSuggestions);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load suggestions';
+			suggestions = [];
+			totalSuggestions = 0;
 		} finally {
 			loading = false;
 		}
@@ -36,8 +40,26 @@
 	async function openDetail(suggestion: Suggestion) {
 		loadingDetail = true;
 		try {
-			selectedSuggestion = await getSuggestion(suggestion.id);
+			const detail = await getSuggestion(suggestion.id);
+			// Defensive: ensure arrays are always defined and filter out nulls
+			selectedSuggestion = {
+				...detail,
+				points: Array.isArray(detail?.points) ? detail.points.filter(p => p != null) : [],
+				expectedRoles: Array.isArray(detail?.expectedRoles) ? detail.expectedRoles.filter(r => r != null) : []
+			};
+			console.log('Loaded suggestion detail:', {
+				id: selectedSuggestion?.id,
+				hasPoints: selectedSuggestion?.points ? 'yes' : 'no',
+				pointsType: typeof selectedSuggestion?.points,
+				pointsIsArray: Array.isArray(selectedSuggestion?.points),
+				pointsLength: Array.isArray(selectedSuggestion?.points) ? selectedSuggestion.points.length : 'N/A',
+				hasExpectedRoles: selectedSuggestion?.expectedRoles ? 'yes' : 'no',
+				expectedRolesType: typeof selectedSuggestion?.expectedRoles,
+				expectedRolesIsArray: Array.isArray(selectedSuggestion?.expectedRoles),
+				expectedRolesLength: Array.isArray(selectedSuggestion?.expectedRoles) ? selectedSuggestion.expectedRoles.length : 'N/A'
+			});
 		} catch (e) {
+			console.error('Error loading suggestion:', e);
 			toasts.add({
 				type: 'error',
 				title: 'Failed to load details',
@@ -141,9 +163,7 @@
 			<p class="text-gray-500 dark:text-gray-400">Review and approve AI-detected patterns to help NAIA learn</p>
 		</div>
 		<button class="btn btn-secondary" onclick={loadSuggestions} disabled={loading}>
-			<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-			</svg>
+			<Icon name="refresh" size="16" />
 			Refresh
 		</button>
 	</div>
@@ -158,9 +178,7 @@
 	<div class="card p-4 bg-naia-500/5 border-naia-500/20">
 		<div class="flex items-start gap-3">
 			<div class="p-2 bg-naia-500/10 rounded-lg">
-				<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-naia-500">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-				</svg>
+				<Icon name="patterns" size="20" class="text-naia-500" />
 			</div>
 			<div>
 				<h3 class="font-medium text-gray-900 dark:text-gray-100">How Pattern Learning Works</h3>
@@ -188,20 +206,18 @@
 					</div>
 				</div>
 			{/each}
-		{:else if !suggestions || suggestions.length === 0}
+	{:else if !suggestions || !Array.isArray(suggestions) || suggestions.length === 0}
 			<div class="card p-12 text-center">
 				<div class="mx-auto w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
-					<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8 text-gray-400">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-					</svg>
+					<Icon name="check" size="32" class="text-gray-400" />
 				</div>
 				<h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">All caught up!</h3>
 				<p class="text-gray-500 dark:text-gray-400 mt-1">
 					No pending suggestions to review. New suggestions will appear as NAIA detects patterns in your data.
 				</p>
 			</div>
-		{:else if suggestions && suggestions.length > 0}
-			{#each suggestions as suggestion}
+		{:else if suggestions && Array.isArray(suggestions) && suggestions.length > 0}
+			{#each (suggestions || []) as suggestion}
 				<button 
 					class="card p-4 text-left hover:shadow-lg transition-shadow w-full"
 					onclick={() => openDetail(suggestion)}
@@ -220,9 +236,7 @@
 									{formatConfidence(suggestion.confidence)}
 								</div>
 							</div>
-							<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-gray-400">
-								<path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-							</svg>
+							<Icon name="chevron-right" size="20" class="text-gray-400" />
 						</div>
 					</div>
 				</button>
@@ -237,10 +251,7 @@
 		<div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-2xl m-4 max-h-[90vh] overflow-hidden" onclick={(e) => e.stopPropagation()}>
 			{#if loadingDetail}
 				<div class="p-8 text-center">
-					<svg class="w-8 h-8 animate-spin mx-auto text-naia-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-					</svg>
+					<Icon name="spinner" size="32" class="mx-auto text-naia-500" />
 					<p class="mt-2 text-gray-500">Loading details...</p>
 				</div>
 			{:else if selectedSuggestion && selectedSuggestion.id}
@@ -255,9 +266,7 @@
 						onclick={() => selectedSuggestion = null}
 						disabled={!!processingAction}
 					>
-						<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-						</svg>
+						<Icon name="close" size="20" />
 					</button>
 				</div>
 
@@ -301,9 +310,9 @@
 
 					<!-- Matched Points -->
 					<div>
-						<h4 class="font-medium text-gray-900 dark:text-gray-100 mb-2">Matched Points ({selectedSuggestion.points?.length || 0})</h4>
+						<h4 class="font-medium text-gray-900 dark:text-gray-100 mb-2">Matched Points ({selectedSuggestion?.points && Array.isArray(selectedSuggestion.points) ? selectedSuggestion.points.filter(p => p != null).length : 0})</h4>
 						<div class="space-y-2">
-							{#each selectedSuggestion.points || [] as match}
+							{#each (selectedSuggestion?.points && Array.isArray(selectedSuggestion.points) ? selectedSuggestion.points : []).filter(m => m != null) as match}
 								<div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
 									<div>
 										<div class="font-mono text-sm">{match.pointName}</div>
@@ -322,15 +331,15 @@
 					</div>
 
 					<!-- Expected Roles -->
-					{#if selectedSuggestion.expectedRoles && selectedSuggestion.expectedRoles.length > 0}
-						<div>
-							<h4 class="font-medium text-gray-900 dark:text-gray-100 mb-2">Expected Pattern Roles</h4>
-							<div class="space-y-2">
-								{#each selectedSuggestion.expectedRoles as role}
+				{#if selectedSuggestion?.expectedRoles && Array.isArray(selectedSuggestion.expectedRoles) && selectedSuggestion.expectedRoles.length > 0}
+					<div>
+						<h4 class="font-medium text-gray-900 dark:text-gray-100 mb-2">Expected Pattern Roles</h4>
+						<div class="space-y-2">
+							{#each (selectedSuggestion?.expectedRoles || []).filter(r => r != null) as role}
 									<div class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
 										<div class="font-medium text-sm">{role?.name || 'Unknown'}</div>
 										<div class="text-xs text-gray-500 mt-1">{role?.description || ''}</div>
-										{#if role?.namingPatterns && role.namingPatterns.length > 0}
+										{#if role?.namingPatterns && Array.isArray(role.namingPatterns) && role.namingPatterns.length > 0}
 											<div class="text-xs text-gray-400 mt-1">Patterns: {role.namingPatterns.join(', ')}</div>
 										{/if}
 									</div>
@@ -362,10 +371,7 @@
 						disabled={!!processingAction}
 					>
 						{#if processingAction === 'defer'}
-							<svg class="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-							</svg>
+							<Icon name="spinner" size="16" />
 						{/if}
 						Defer
 					</button>
@@ -375,10 +381,7 @@
 						disabled={!!processingAction}
 					>
 						{#if processingAction === 'reject'}
-							<svg class="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-							</svg>
+							<Icon name="spinner" size="16" />
 						{/if}
 						Reject
 					</button>
@@ -388,10 +391,7 @@
 						disabled={!!processingAction}
 					>
 						{#if processingAction === 'approve'}
-							<svg class="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-							</svg>
+							<Icon name="spinner" size="16" />
 						{/if}
 						Approve
 					</button>

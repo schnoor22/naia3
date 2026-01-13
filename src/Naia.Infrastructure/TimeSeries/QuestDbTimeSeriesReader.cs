@@ -48,7 +48,9 @@ public sealed class QuestDbTimeSeriesReader : ITimeSeriesReader, IAsyncDisposabl
             Password = "quest",
             Database = "qdb",
             CommandTimeout = 60,
-            Pooling = false,  // Disable pooling - QuestDB may not handle it well
+            Pooling = true,  // ENABLE pooling to handle concurrent access from multiple jobs
+            MinPoolSize = 2,
+            MaxPoolSize = 20,
             IncludeErrorDetail = false
         };
         
@@ -57,7 +59,7 @@ public sealed class QuestDbTimeSeriesReader : ITimeSeriesReader, IAsyncDisposabl
         var connString = connStringBuilder.ToString() + ";Server Compatibility Mode=NoTypeLoading";
         
         _dataSource = NpgsqlDataSource.Create(connString);
-        _logger.LogInformation("QuestDB reader initialized: {Endpoint}", _options.PgWireEndpoint);
+        _logger.LogInformation("QuestDB reader initialized with pooling: {Endpoint}", _options.PgWireEndpoint);
         
         return _dataSource;
     }

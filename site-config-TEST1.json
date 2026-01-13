@@ -1,0 +1,18 @@
+﻿{
+    "Enabled":  true,
+    "CsvFormat":  {
+                      "StatusColumn":  "Status",
+                      "SkipRowsBeforeHeader":  0,
+                      "ValueColumn":  "Value",
+                      "TimestampColumn":  "Timestamp",
+                      "Delimiter":  ","
+                  },
+    "SiteId":  "TEST1",
+    "StripPrefixLength":  11,
+    "BadStatusHandling":  "Skip",
+    "TagNameSource":  "Filename",
+    "Timezone":  "America/Chicago",
+    "TagPrefix":  "TEST1_",
+    "SiteName":  "Test Site Alpha",
+    "DataDirectory":  "C:\\naia3\\data\\test-site"
+}
