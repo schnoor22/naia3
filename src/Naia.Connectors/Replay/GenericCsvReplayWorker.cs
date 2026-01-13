@@ -155,12 +155,16 @@ public sealed class GenericCsvReplayWorker : BackgroundService
         _logger.LogInformation("Data range: {Start:yyyy-MM-dd HH:mm} to {End:yyyy-MM-dd HH:mm} (Duration: {Duration})",
             startTime, endTime, duration);
         
-        // Step 3: Publish to Kafka
+        // Step 3: Publish to Kafka in batches
         _logger.LogInformation("Publishing to Kafka topic: {Topic}", _options.KafkaTopic);
         
         int published = 0;
+        int batchesPublished = 0;
         var sw = System.Diagnostics.Stopwatch.StartNew();
         DateTime? lastTimestamp = null;
+        
+        const int batchSize = 1000; // Publish in batches of 1000 points
+        var currentBatch = new List<DataPoint>();
         
         foreach (var (point, site) in allData)
         {
@@ -209,19 +213,15 @@ public sealed class GenericCsvReplayWorker : BackgroundService
                 ReceivedAt = DateTime.UtcNow
             };
             
-            try
+            currentBatch.Add(dataPoint);
+            
+            // Publish batch when full
+            if (currentBatch.Count >= batchSize)
             {
-                var json = JsonSerializer.Serialize(dataPoint, _jsonOptions);
-                var message = new Message<string, string>
-                {
-                    Key = point.TagName,
-                    Value = json
-                };
-                
-                await _producer.ProduceAsync(_options.KafkaTopic, message, ct);
-                
-                published++;
-                _messagesPublished++;
+                await PublishBatchAsync(currentBatch, site.SiteId, ct);
+                published += currentBatch.Count;
+                batchesPublished++;
+                currentBatch.Clear();
                 
                 // Progress logging
                 if (published % 10000 == 0)
@@ -231,19 +231,56 @@ public sealed class GenericCsvReplayWorker : BackgroundService
                         published, allData.Count, (published * 100.0 / allData.Count), rate);
                 }
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to publish data point: {Tag} @ {Time}", 
-                    point.TagName, point.Timestamp);
-                _errorCount++;
-            }
+        }
+        
+        // Publish any remaining points
+        if (currentBatch.Count > 0)
+        {
+            await PublishBatchAsync(currentBatch, _options.Sites.FirstOrDefault()?.SiteId ?? "GenericCsvReplay", ct);
+            published += currentBatch.Count;
+            batchesPublished++;
         }
         
         sw.Stop();
         var avgRate = published / sw.Elapsed.TotalSeconds;
         
         _logger.LogInformation(
-            "✓ Published {Count:N0} data points in {Duration} ({Rate:F0} msg/s average)",
-            published, sw.Elapsed, avgRate);
+            "✓ Published {Count:N0} data points in {Batches} batches, {Duration} ({Rate:F0} msg/s average)",
+            published, batchesPublished, sw.Elapsed, avgRate);
+    }
+    
+    /// <summary>
+    /// Publish a batch of data points to Kafka.
+    /// </summary>
+    private async Task PublishBatchAsync(List<DataPoint> points, string dataSourceId, CancellationToken ct)
+    {
+        if (points.Count == 0)
+            return;
+        
+        var batch = new DataPointBatch
+        {
+            Points = points.ToList(), // Create copy to avoid mutation
+            BatchId = Guid.NewGuid().ToString("N"),
+            CreatedAt = DateTime.UtcNow,
+            DataSourceId = dataSourceId
+        };
+        
+        try
+        {
+            var json = JsonSerializer.Serialize(batch, _jsonOptions);
+            var message = new Message<string, string>
+            {
+                Key = $"csv-replay-{batch.BatchId}",
+                Value = json
+            };
+            
+            await _producer.ProduceAsync(_options.KafkaTopic, message, ct);
+            _messagesPublished += points.Count;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to publish batch with {Count} points", points.Count);
+            _errorCount += points.Count;
+        }
     }
 }
