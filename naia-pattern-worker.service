@@ -1,0 +1,21 @@
+[Unit]
+Description=NAIA Pattern Worker - Background Pattern Analysis Service
+After=network.target postgresql.service redis.service kafka.service
+
+[Service]
+Type=notify
+WorkingDirectory=/opt/naia/pattern-worker
+ExecStart=/opt/naia/pattern-worker/Naia.PatternWorker
+Restart=always
+RestartSec=10
+SyslogIdentifier=naia-pattern-worker
+User=root
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+
+# Security hardening
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
