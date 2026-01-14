@@ -7,8 +7,10 @@
 	import AuthGate from '$lib/components/AuthGate.svelte';
 	import { pendingCount, connectionState } from '$lib/stores/signalr';
 	import { initializeSignalR } from '$lib/services/signalr';
+	import { isMasterMode, verifyMasterAccess, logoutMaster } from '$lib/stores/master';
 
 	let sidebarOpen = $state(true);
+	let masterVerified = $state(false);
 	
 	// Build info for version display
 	let buildInfo = $state<{ version: string; buildTimeDisplay: string; gitCommit?: string } | null>(null);
@@ -20,15 +22,20 @@
 		patterns: '🔍',
 		ingestion: '📥',
 		stack: '🔧',
-		logs: '📄'
+		logs: '📄',
+		coral: '🐚',
+		health: '💚',
+		debug: '🤖'
 	};
 
 	const navItems = [
 		{ href: '/', label: 'Dashboard', icon: 'dashboard' },
+		{ href: '/coral', label: 'Ask Coral', icon: 'coral' },
 		{ href: '/points', label: 'Point Browser', icon: 'points' },
 		{ href: '/trends', label: 'Trend Viewer', icon: 'trends' },
 		{ href: '/patterns', label: 'Pattern Review', icon: 'patterns' },
 		{ href: '/ingestion', label: 'Ingestion', icon: 'ingestion' },
+		{ href: '/health', label: 'System Health', icon: 'health' },
 		{ href: '/stack', label: 'Technology Stack', icon: 'stack' },
 		{ href: '/logs', label: 'System Logs', icon: 'logs' },
 	];
@@ -41,6 +48,11 @@
 	onMount(async () => {
 		initializeSignalR();
 		
+		// Verify master access if token exists
+		if ($isMasterMode) {
+			masterVerified = await verifyMasterAccess();
+		}
+		
 		// Load build info
 		try {
 			const response = await fetch('/BUILD_INFO.json');
@@ -49,6 +61,15 @@
 			}
 		} catch (e) {
 			console.log('Build info not available');
+		}
+	});
+	
+	// Re-verify when master mode changes
+	$effect(() => {
+		if ($isMasterMode) {
+			verifyMasterAccess().then(v => masterVerified = v);
+		} else {
+			masterVerified = false;
 		}
 	});
 </script>
@@ -101,6 +122,112 @@
 					{/if}
 				</a>
 			{/each}
+			
+			<!-- Debug Console - Master Mode Only -->
+			{#if $isMasterMode || masterVerified}
+				<div class="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
+					{#if sidebarOpen}
+						<div class="px-2 py-1 text-[10px] uppercase tracking-wider text-amber-500 dark:text-amber-400 font-semibold">
+							Dev Tools
+						</div>
+					{/if}
+					<a
+						href="/debug"
+						class="nav-link"
+						class:active={isActive('/debug', $page.url.pathname)}
+						aria-label="Debug Console"
+					>
+						<span class="flex-shrink-0 w-6 h-6 flex items-center justify-center text-lg">
+							🤖
+						</span>
+						{#if sidebarOpen}
+							<span class="truncate">AI Debug</span>
+							<span class="ml-auto px-1.5 py-0.5 bg-amber-500/20 text-amber-500 text-[10px] rounded">
+								Claude
+							</span>
+						{/if}
+					</a>
+					<a
+						href="/sql"
+						class="nav-link"
+						class:active={isActive('/sql', $page.url.pathname)}
+						aria-label="PostgreSQL Console"
+					>
+						<span class="flex-shrink-0 w-6 h-6 flex items-center justify-center text-lg">
+							🐘
+						</span>
+						{#if sidebarOpen}
+							<span class="truncate">PostgreSQL</span>
+						{/if}
+					</a>
+					<a
+						href="/redis"
+						class="nav-link"
+						class:active={isActive('/redis', $page.url.pathname)}
+						aria-label="Redis Browser"
+					>
+						<span class="flex-shrink-0 w-6 h-6 flex items-center justify-center text-lg">
+							🔴
+						</span>
+						{#if sidebarOpen}
+							<span class="truncate">Redis</span>
+						{/if}
+					</a>
+					<a
+						href="http://localhost:9000"
+						target="_blank"
+						class="nav-link"
+						aria-label="QuestDB Console"
+					>
+						<span class="flex-shrink-0 w-6 h-6 flex items-center justify-center text-lg">
+							⏱️
+						</span>
+						{#if sidebarOpen}
+							<span class="truncate">QuestDB</span>
+							<span class="ml-auto text-gray-500 text-xs">↗</span>
+						{/if}
+					</a>
+					<a
+						href="/kafka"
+						class="nav-link"
+						class:active={isActive('/kafka', $page.url.pathname)}
+						aria-label="Kafka Topics"
+					>
+						<span class="flex-shrink-0 w-6 h-6 flex items-center justify-center text-lg">
+							📨
+						</span>
+						{#if sidebarOpen}
+							<span class="truncate">Kafka</span>
+						{/if}
+					</a>
+					<a
+						href="/api-tester"
+						class="nav-link"
+						class:active={isActive('/api-tester', $page.url.pathname)}
+						aria-label="API Tester"
+					>
+						<span class="flex-shrink-0 w-6 h-6 flex items-center justify-center text-lg">
+							🧪
+						</span>
+						{#if sidebarOpen}
+							<span class="truncate">API Tester</span>
+						{/if}
+					</a>
+					<a
+						href="/signalr"
+						class="nav-link"
+						class:active={isActive('/signalr', $page.url.pathname)}
+						aria-label="SignalR Tester"
+					>
+						<span class="flex-shrink-0 w-6 h-6 flex items-center justify-center text-lg">
+							📡
+						</span>
+						{#if sidebarOpen}
+							<span class="truncate">SignalR</span>
+						{/if}
+					</a>
+				</div>
+			{/if}
 		</nav>
 
 		<!-- Sidebar footer -->

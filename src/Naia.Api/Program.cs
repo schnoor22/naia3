@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Naia.Api.Dtos;
 using Naia.Api.Hubs;
+using Naia.Api.Middleware;
 using Naia.Application.Abstractions;
 using Naia.Connectors;
 using Naia.Connectors.Abstractions;
@@ -60,6 +61,17 @@ builder.Services.AddSingleton<BackfillOrchestrator>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BackfillOrchestrator>());
 
 // =============================================================================
+// CLAUDE DEBUG CONSOLE - AI-Powered Debugging (Master Mode Only)
+// =============================================================================
+builder.Services.AddHttpClient("Claude");
+builder.Services.AddSingleton<ClaudeDebugService>();
+
+// =============================================================================
+// CORAL AI ASSISTANT - The Nurturing Guide to NAIA's Data Ocean
+// =============================================================================
+builder.Services.AddSingleton<CoralAssistantService>();
+
+// =============================================================================
 // PATTERN FLYWHEEL - The Learning Engine (Hangfire Jobs)
 // =============================================================================
 // Point lookup cache for pattern workers
@@ -71,6 +83,7 @@ builder.Services.AddPatternEngine(builder.Configuration);
 // Pattern repositories for API
 builder.Services.AddScoped<ISuggestionRepository, SuggestionRepository>();
 builder.Services.AddScoped<IPatternRepository, PatternRepository>();
+builder.Services.AddScoped<IKnowledgeBaseRepository, KnowledgeBaseRepository>();
 
 // SignalR for real-time suggestion notifications
 builder.Services.AddSignalR();
@@ -113,6 +126,9 @@ var app = builder.Build();
 
 // Configure the HTTP request pipeline.
 app.UseCors("AllowUI");
+
+// Master access override - must be early in pipeline
+app.UseMasterAccess();
 
 // Serve static files from wwwroot (for embedded SPA)
 app.UseDefaultFiles();
@@ -265,6 +281,93 @@ app.MapGet("/api/points/{id:guid}", async (Guid id, IPointRepository repo) =>
     return point is null ? Results.NotFound() : Results.Ok(point);
 })
 .WithName("GetPoint")
+.WithTags("Points");
+
+app.MapDelete("/api/points/bulk", async (
+    HttpContext httpContext,
+    IPointRepository pointRepo,
+    IDataSourceRepository dataSourceRepo,
+    NaiaDbContext dbContext,
+    ILogger<Program> logger) =>
+{
+    var request = await httpContext.Request.ReadFromJsonAsync<BulkDeletePointsRequest>();
+    if (request is null || request.PointIds.Count == 0)
+        return Results.BadRequest("No point IDs provided");
+
+    var deletedCount = 0;
+    var csvFilesDeleted = 0;
+    var errors = new List<string>();
+
+    foreach (var pointId in request.PointIds)
+    {
+        try
+        {
+            var point = await pointRepo.GetByIdAsync(pointId);
+            if (point is null)
+            {
+                errors.Add($"Point {pointId} not found");
+                continue;
+            }
+
+            // If CSV deletion requested, try to find and delete the CSV file
+            if (request.DeleteCsvFiles && point.DataSourceId.HasValue)
+            {
+                var dataSource = await dataSourceRepo.GetByIdAsync(point.DataSourceId.Value);
+                if (dataSource?.SourceType == DataSourceType.GenericCsvReplay)
+                {
+                    // Try to find CSV file based on point name
+                    // Format: /opt/naia/data/solar/{pendleton|bluewater}/{pointname}.csv
+                    var basePaths = new[]
+                    {
+                        "/opt/naia/data/solar/pendleton",
+                        "/opt/naia/data/solar/bluewater"
+                    };
+
+                    foreach (var basePath in basePaths)
+                    {
+                        // Try exact match first
+                        var csvPath = Path.Combine(basePath, $"{point.Name}.csv");
+                        if (File.Exists(csvPath))
+                        {
+                            try
+                            {
+                                File.Delete(csvPath);
+                                csvFilesDeleted++;
+                                logger.LogInformation("Deleted CSV file: {Path}", csvPath);
+                                break;
+                            }
+                            catch (Exception ex)
+                            {
+                                logger.LogWarning(ex, "Failed to delete CSV file: {Path}", csvPath);
+                                errors.Add($"Failed to delete CSV for {point.Name}: {ex.Message}");
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Delete the point from database
+            await pointRepo.DeleteAsync(pointId);
+            deletedCount++;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to delete point {PointId}", pointId);
+            errors.Add($"Failed to delete point {pointId}: {ex.Message}");
+        }
+    }
+
+    // Save changes to database
+    await dbContext.SaveChangesAsync();
+
+    return Results.Ok(new
+    {
+        deletedPoints = deletedCount,
+        csvFilesDeleted,
+        errors = errors.Count > 0 ? errors : null
+    });
+})
+.WithName("BulkDeletePoints")
 .WithTags("Points");
 
 // ============================================================================
@@ -2063,4 +2166,4 @@ public class DiscoveredPointDto
     public Dictionary<string, object>? Attributes { get; set; }
 }
 
-
+record BulkDeletePointsRequest(List<Guid> PointIds, bool DeleteCsvFiles = false);
