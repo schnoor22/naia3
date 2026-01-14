@@ -399,6 +399,53 @@ app.MapGet("/api/points/{id:guid}", async (Guid id, IPointRepository repo) =>
 .WithName("GetPoint")
 .WithTags("Points");
 
+app.MapPut("/api/points/{id:guid}", async (
+    Guid id,
+    HttpContext httpContext,
+    IPointRepository repo,
+    ILogger<Program> logger) =>
+{
+    // Check for Master token
+    var token = httpContext.Request.Headers["X-Master-Token"].FirstOrDefault();
+    var masterToken = httpContext.RequestServices
+        .GetRequiredService<IConfiguration>()["MasterToken"] ?? "naia_secure_master_token_2026";
+    
+    if (token != masterToken)
+    {
+        return Results.Unauthorized();
+    }
+    
+    var existingPoint = await repo.GetByIdAsync(id);
+    if (existingPoint is null)
+        return Results.NotFound();
+    
+    var updateRequest = await httpContext.Request.ReadFromJsonAsync<PointUpdateRequest>();
+    if (updateRequest is null)
+        return Results.BadRequest("Invalid request body");
+    
+    // Update allowed fields using domain methods
+    if (updateRequest.Description is not null)
+        existingPoint.UpdateDescription(updateRequest.Description);
+    if (updateRequest.EngineeringUnits is not null)
+        existingPoint.UpdateEngineeringUnits(updateRequest.EngineeringUnits);
+    if (updateRequest.IsEnabled.HasValue)
+    {
+        if (updateRequest.IsEnabled.Value)
+            existingPoint.Enable();
+        else
+            existingPoint.Disable();
+    }
+    // Note: MinValue/MaxValue not supported on Point entity - use scaling instead
+    
+    await repo.UpdateAsync(existingPoint);
+    
+    logger.LogInformation("Point {PointId} updated by Master user", id);
+    
+    return Results.Ok(existingPoint);
+})
+.WithName("UpdatePoint")
+.WithTags("Points");
+
 app.MapDelete("/api/points/bulk", async (
     HttpContext httpContext,
     IPointRepository pointRepo,
@@ -492,21 +539,68 @@ app.MapDelete("/api/points/bulk", async (
 app.MapGet("/api/points/{id:guid}/current", async (
     Guid id,
     IPointRepository pointRepo,
-    ICurrentValueCache cache) =>
+    ICurrentValueCache cache,
+    ILogger<Program> logger) =>
 {
     var point = await pointRepo.GetByIdAsync(id);
     if (point is null) return Results.NotFound();
     
     if (point.PointSequenceId is null)
-        return Results.BadRequest("Point not yet synchronized to time-series database");
+    {
+        logger.LogWarning("Point {PointId} ({PointName}) has null PointSequenceId - not synchronized to time-series database yet", 
+            point.Id, point.Name);
+        return Results.Ok(new 
+        {
+            value = (string?)null,
+            timestamp = DateTime.UtcNow.ToString("O"),
+            quality = "NotSynced",
+            message = "Point not yet synchronized to time-series database"
+        });
+    }
     
     var current = await cache.GetAsync(point.PointSequenceId.Value);
     return current is null 
-        ? Results.NotFound("No current value") 
+        ? Results.Ok(new 
+        {
+            value = (string?)null,
+            timestamp = DateTime.UtcNow.ToString("O"),
+            quality = "NoData",
+            message = "No current value in cache"
+        })
         : Results.Ok(current);
 })
 .WithName("GetCurrentValue")
 .WithTags("TimeSeries");
+
+// Diagnostic endpoint to check point sequence ID status
+app.MapGet("/api/points/diagnostics/sequence-ids", async (
+    IPointRepository pointRepo,
+    int take = 100) =>
+{
+    var points = await pointRepo.SearchAsync(skip: 0, take: take);
+    var diagnostics = points.Select(p => new
+    {
+        id = p.Id,
+        name = p.Name,
+        pointSequenceId = p.PointSequenceId,
+        hasSequenceId = p.PointSequenceId.HasValue,
+        isEnabled = p.IsEnabled,
+        dataSource = p.DataSource?.Name
+    });
+    
+    var summary = new
+    {
+        total = points.Count,
+        withSequenceId = points.Count(p => p.PointSequenceId.HasValue),
+        withoutSequenceId = points.Count(p => !p.PointSequenceId.HasValue),
+        enabled = points.Count(p => p.IsEnabled),
+        points = diagnostics
+    };
+    
+    return Results.Ok(summary);
+})
+.WithName("GetPointSequenceIdDiagnostics")
+.WithTags("Diagnostics");
 
 app.MapGet("/api/points/{id:guid}/history", async (
     Guid id,
@@ -617,17 +711,30 @@ app.MapGet("/api/pipeline/metrics", async (ITimeSeriesReader questDb, IConfigura
         var isRunning = latestTimestamp.HasValue && 
                         (DateTime.UtcNow - latestTimestamp.Value).TotalMinutes < 5;
         
-        // Calculate points per second from last minute
+        // Calculate points per second from last 60 seconds using sliding window
+        // Uses NOW() - 60 seconds instead of latest timestamp for accurate current rate
         double pointsPerSecond = 0;
-        if (isRunning && latestTimestamp.HasValue)
+        if (latestTimestamp.HasValue)
         {
-            var oneMinuteAgo = latestTimestamp.Value.AddMinutes(-1);
+            // Use a 60-second sliding window from NOW for real-time rate
+            // QuestDB supports NOW() function for current timestamp
             using var rateCmd = new Npgsql.NpgsqlCommand(
-                $"SELECT COUNT(*) FROM point_data WHERE timestamp >= '{oneMinuteAgo:yyyy-MM-ddTHH:mm:ss.fffZ}'", 
+                "SELECT COUNT(*) FROM point_data WHERE timestamp > dateadd('s', -60, now())", 
                 connection);
             
             var lastMinuteCount = (long)(await rateCmd.ExecuteScalarAsync() ?? 0L);
             pointsPerSecond = lastMinuteCount / 60.0;
+            
+            // If no data in last minute, check if we have recent data at all
+            if (pointsPerSecond < 0.1 && isRunning)
+            {
+                // Fall back to a 5-minute window for slower data rates
+                using var rateCmd5m = new Npgsql.NpgsqlCommand(
+                    "SELECT COUNT(*) FROM point_data WHERE timestamp > dateadd('m', -5, now())", 
+                    connection);
+                var last5MinCount = (long)(await rateCmd5m.ExecuteScalarAsync() ?? 0L);
+                pointsPerSecond = last5MinCount / 300.0; // 300 seconds = 5 minutes
+            }
         }
         
         // Estimate batches (assuming ~90 points per batch)
@@ -926,6 +1033,8 @@ app.MapPost("/api/pi/points/add", async (
     var addedCount = 0;
     var errors = new List<string>();
 
+    var newPointsToAdd = new List<(DiscoveredPointDto discovered, Point entity)>();
+    
     foreach (var point in request.Points)
     {
         try
@@ -949,6 +1058,7 @@ app.MapPost("/api/pi/points/add", async (
                 sourceAddress: point.SourceAddress);
 
             await pointRepo.AddAsync(newPoint);
+            newPointsToAdd.Add((point, newPoint));
             addedCount++;
         }
         catch (Exception ex)
@@ -960,6 +1070,16 @@ app.MapPost("/api/pi/points/add", async (
     if (addedCount > 0)
     {
         await unitOfWork.SaveChangesAsync();
+        
+        // Refresh points to get database-generated PointSequenceId values
+        foreach (var (_, point) in newPointsToAdd)
+        {
+            var refreshed = await pointRepo.GetByIdAsync(point.Id);
+            if (refreshed?.PointSequenceId == null)
+            {
+                errors.Add($"{point.Name}: Warning - PointSequenceId not populated");
+            }
+        }
     }
 
     return Results.Ok(new
@@ -2297,3 +2417,11 @@ public class DiscoveredPointDto
 }
 
 record BulkDeletePointsRequest(List<Guid> PointIds, bool DeleteCsvFiles = false);
+
+record PointUpdateRequest(
+    string? Description = null,
+    string? EngineeringUnits = null,
+    bool? IsEnabled = null,
+    double? MinValue = null,
+    double? MaxValue = null
+);

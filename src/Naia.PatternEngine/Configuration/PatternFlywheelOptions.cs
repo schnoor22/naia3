@@ -47,17 +47,17 @@ public sealed class HangfireOptions
     /// <summary>Worker count for job processing</summary>
     public int WorkerCount { get; set; } = 5;
     
-    /// <summary>CRON schedule for behavioral analysis job (default: every 5 minutes)</summary>
-    public string BehavioralAnalysisCron { get; set; } = "*/5 * * * *";
+    /// <summary>CRON schedule for behavioral analysis job (default: every 15 minutes)</summary>
+    public string BehavioralAnalysisCron { get; set; } = "*/15 * * * *";
     
-    /// <summary>CRON schedule for correlation analysis job (default: every 15 minutes)</summary>
-    public string CorrelationAnalysisCron { get; set; } = "*/15 * * * *";
+    /// <summary>CRON schedule for correlation analysis job (default: every 30 minutes)</summary>
+    public string CorrelationAnalysisCron { get; set; } = "*/30 * * * *";
     
-    /// <summary>CRON schedule for cluster detection job (default: every 15 minutes, offset by 5)</summary>
-    public string ClusterDetectionCron { get; set; } = "5/15 * * * *";
+    /// <summary>CRON schedule for cluster detection job (default: every 30 minutes, offset by 10)</summary>
+    public string ClusterDetectionCron { get; set; } = "10/30 * * * *";
     
-    /// <summary>CRON schedule for pattern matching job (default: every 15 minutes, offset by 10)</summary>
-    public string PatternMatchingCron { get; set; } = "10/15 * * * *";
+    /// <summary>CRON schedule for pattern matching job (default: every 30 minutes, offset by 20)</summary>
+    public string PatternMatchingCron { get; set; } = "20/30 * * * *";
     
     /// <summary>CRON schedule for pattern learning job (default: hourly)</summary>
     public string PatternLearningCron { get; set; } = "0 * * * *";

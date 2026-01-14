@@ -42,6 +42,20 @@ public sealed class GenericCsvReplayOptions
     /// How to handle bad status values: "Skip", "Store", "ConvertToNull"
     /// </summary>
     public string BadStatusHandling { get; set; } = "Store";
+    
+    // ============================================================================
+    // RATE LIMITING (Commented out - enable when needed for high-volume sites)
+    // ============================================================================
+    // /// <summary>
+    // /// Maximum points per second to publish. 0 = unlimited.
+    // /// Use to prevent overwhelming downstream consumers.
+    // /// </summary>
+    // public int MaxPointsPerSecond { get; set; } = 0;
+    // 
+    // /// <summary>
+    // /// Delay in milliseconds between batches. Helps distribute load.
+    // /// </summary>
+    // public int BatchDelayMs { get; set; } = 0;
 }
 
 /// <summary>
@@ -80,6 +94,13 @@ public sealed class SiteReplayConfig
     /// Useful for removing vendor/site prefixes like "MSR1SINV11A01" → "01".
     /// </summary>
     public int StripPrefixLength { get; set; } = 0;
+    
+    /// <summary>
+    /// Offset in seconds to delay this site's data publishing.
+    /// Use to stagger multiple sites and prevent thundering herd.
+    /// Example: Site1=0, Site2=30, Site3=60 spreads load evenly.
+    /// </summary>
+    public int StartOffsetSeconds { get; set; } = 0;
     
     /// <summary>
     /// CSV format configuration.

@@ -84,7 +84,18 @@
 	}
 	
 	function formatTimestamp(timestamp: string): string {
-		return new Date(timestamp).toLocaleString();
+		// Parse the UTC timestamp and display in user's local timezone
+		const date = new Date(timestamp);
+		// Use toLocaleString with explicit options for consistent formatting
+		return date.toLocaleString(undefined, {
+			year: 'numeric',
+			month: '2-digit',
+			day: '2-digit',
+			hour: '2-digit',
+			minute: '2-digit',
+			second: '2-digit',
+			hour12: false
+		});
 	}
 	
 	function getShortSource(source: string | null): string {

@@ -105,14 +105,19 @@ public sealed class GenericCsvReplayWorker : BackgroundService
     /// </summary>
     private async Task ReplayAllSitesAsync(CancellationToken ct)
     {
-        // Step 1: Load all data from all sites
+        // Step 1: Load all data from all sites with per-site offset tracking
         _logger.LogInformation("Loading data from {Count} sites...", _options.Sites.Count);
         
         var allData = new List<(CsvDataPoint Point, SiteReplayConfig Site)>();
+        var siteOffsets = new Dictionary<string, TimeSpan>();
         
         foreach (var site in _options.Sites)
         {
-            _logger.LogInformation("  Loading site: {Name} ({Id})", site.SiteName, site.SiteId);
+            _logger.LogInformation("  Loading site: {Name} ({Id}) [Offset: {Offset}s]", 
+                site.SiteName, site.SiteId, site.StartOffsetSeconds);
+            
+            // Track per-site offset for staggering
+            siteOffsets[site.SiteId] = TimeSpan.FromSeconds(site.StartOffsetSeconds);
             
             var siteFiles = _csvReader.ScanSiteFiles(site).ToList();
             _logger.LogInformation("    Found {Count} CSV files", siteFiles.Count);
@@ -144,9 +149,16 @@ public sealed class GenericCsvReplayWorker : BackgroundService
             return;
         }
         
-        // Step 2: Sort by timestamp for chronological replay
-        _logger.LogInformation("Sorting {Count:N0} data points by timestamp...", allData.Count);
-        allData.Sort((a, b) => a.Point.Timestamp.CompareTo(b.Point.Timestamp));
+        // Step 2: Sort by timestamp for chronological replay (with site offsets applied)
+        _logger.LogInformation("Sorting {Count:N0} data points by timestamp (with per-site staggering)...", allData.Count);
+        
+        // Apply per-site offsets when sorting to stagger publishing
+        allData.Sort((a, b) => 
+        {
+            var timeA = a.Point.Timestamp + siteOffsets.GetValueOrDefault(a.Site.SiteId, TimeSpan.Zero);
+            var timeB = b.Point.Timestamp + siteOffsets.GetValueOrDefault(b.Site.SiteId, TimeSpan.Zero);
+            return timeA.CompareTo(timeB);
+        });
         
         var startTime = allData.First().Point.Timestamp;
         var endTime = allData.Last().Point.Timestamp;

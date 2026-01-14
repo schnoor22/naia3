@@ -15,6 +15,7 @@ public interface IBehavioralAnalysisJob
     /// Results stored in PostgreSQL behavioral_stats table and cached in Redis.
     /// </summary>
     [AutomaticRetry(Attempts = 3, DelaysInSeconds = [30, 60, 120])]
+    [DisableConcurrentExecution(timeoutInSeconds: 600)]
     [Queue("analysis")]
     Task ExecuteAsync(PerformContext? context, CancellationToken cancellationToken);
 }
@@ -31,6 +32,7 @@ public interface ICorrelationAnalysisJob
     /// Groups points by update rate and value range to reduce O(n²) complexity.
     /// </summary>
     [AutomaticRetry(Attempts = 3, DelaysInSeconds = [60, 120, 300])]
+    [DisableConcurrentExecution(timeoutInSeconds: 900)]
     [Queue("analysis")]
     Task ExecuteAsync(PerformContext? context, CancellationToken cancellationToken);
 }
@@ -47,6 +49,7 @@ public interface IClusterDetectionJob
     /// Minimum cluster size: 3 points. Maximum: 50 points. Minimum cohesion: 0.50.
     /// </summary>
     [AutomaticRetry(Attempts = 3, DelaysInSeconds = [60, 120, 300])]
+    [DisableConcurrentExecution(timeoutInSeconds: 600)]
     [Queue("analysis")]
     Task ExecuteAsync(PerformContext? context, CancellationToken cancellationToken);
 }
@@ -66,6 +69,7 @@ public interface IPatternMatchingJob
     /// Creates suggestions for matches above 50% confidence.
     /// </summary>
     [AutomaticRetry(Attempts = 3, DelaysInSeconds = [60, 120, 300])]
+    [DisableConcurrentExecution(timeoutInSeconds: 600)]
     [Queue("matching")]
     Task ExecuteAsync(PerformContext? context, CancellationToken cancellationToken);
 }
@@ -84,6 +88,7 @@ public interface IPatternLearningJob
     /// Also applies confidence decay (0.5% per day of inactivity).
     /// </summary>
     [AutomaticRetry(Attempts = 3, DelaysInSeconds = [60, 120, 300])]
+    [DisableConcurrentExecution(timeoutInSeconds: 300)]
     [Queue("learning")]
     Task ExecuteAsync(PerformContext? context, CancellationToken cancellationToken);
 }
@@ -99,6 +104,7 @@ public interface IMaintenanceJob
     /// Runs retention policies for behavioral stats and feedback logs.
     /// </summary>
     [AutomaticRetry(Attempts = 2, DelaysInSeconds = [300, 600])]
+    [DisableConcurrentExecution(timeoutInSeconds: 1800)]
     [Queue("maintenance")]
     Task ExecuteAsync(PerformContext? context, CancellationToken cancellationToken);
 }
@@ -115,6 +121,7 @@ public interface IProactivePatternMatchingJob
     /// likely equipment patterns immediately when points are registered.
     /// </summary>
     [AutomaticRetry(Attempts = 3, DelaysInSeconds = [60, 120, 300])]
+    [DisableConcurrentExecution(timeoutInSeconds: 600)]
     [Queue("matching")]
     Task ExecuteAsync(PerformContext? context, CancellationToken cancellationToken);
     

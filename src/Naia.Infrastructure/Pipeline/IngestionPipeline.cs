@@ -321,6 +321,9 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
     /// Enrich batch by resolving PointSequenceIds from PointNames via lookup service.
     /// AUTO-REGISTRATION: If a point doesn't exist, it will be created automatically.
     /// This enables zero-config data ingestion - just send data and points are created on demand.
+    /// 
+    /// PERFORMANCE: Cache refresh is batched - all new points are registered first,
+    /// then cache is refreshed ONCE at the end instead of per-point.
     /// </summary>
     private async Task<DataPointBatch> EnrichBatchWithPointSequenceIdsAsync(
         DataPointBatch batch,
@@ -328,9 +331,11 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
         CancellationToken cancellationToken)
     {
         var enrichedPoints = new List<DataPoint>();
+        var pendingRegistrations = new List<(string PointName, DataPoint Original)>();
         int resolved = 0;
         int autoRegistered = 0;
         
+        // First pass: resolve from cache, collect pending registrations
         foreach (var point in batch.Points)
         {
             // Skip if already has valid SequenceId (not 0)
@@ -348,44 +353,90 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
                 continue;
             }
             
-            try
+            // Try lookup first
+            var lookup = await _pointLookup.GetByNameAsync(point.PointName, cancellationToken);
+            
+            if (lookup != null && lookup.SequenceId > 0)
             {
-                // Try lookup first
-                var lookup = await _pointLookup.GetByNameAsync(point.PointName, cancellationToken);
-                
-                // AUTO-REGISTRATION: Create point if not found
-                if (lookup == null || !lookup.HasSequenceId)
+                enrichedPoints.Add(new DataPoint
                 {
-                    lookup = await AutoRegisterPointAsync(point.PointName, batch.DataSourceId, cancellationToken);
-                    if (lookup != null) autoRegistered++;
+                    PointSequenceId = lookup.SequenceId,
+                    PointName = point.PointName,
+                    Timestamp = point.Timestamp,
+                    Value = point.Value,
+                    Quality = point.Quality
+                });
+                resolved++;
+            }
+            else
+            {
+                // Queue for batch registration
+                pendingRegistrations.Add((point.PointName, point));
+            }
+        }
+        
+        // Second pass: batch register all new points, refresh cache ONCE
+        if (pendingRegistrations.Count > 0)
+        {
+            _logger.LogInformation(
+                "Batch {BatchId}: Registering {Count} new points in batch mode",
+                batchId, pendingRegistrations.Count);
+            
+            // Register all points without cache refresh
+            var registeredNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            
+            foreach (var (pointName, original) in pendingRegistrations)
+            {
+                try
+                {
+                    var registered = await AutoRegisterPointWithoutRefreshAsync(
+                        pointName, batch.DataSourceId, cancellationToken);
+                    
+                    if (registered)
+                    {
+                        registeredNames.Add(pointName);
+                        autoRegistered++;
+                    }
                 }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Batch {BatchId}: Failed to register '{PointName}'", batchId, pointName);
+                }
+            }
+            
+            // Refresh cache ONCE for all new registrations
+            if (registeredNames.Count > 0)
+            {
+                await _pointLookup.RefreshCacheAsync(cancellationToken);
+                _logger.LogInformation(
+                    "✨ Batch registered {Count} points, cache refreshed once",
+                    registeredNames.Count);
+            }
+            
+            // Now resolve the newly registered points
+            foreach (var (pointName, original) in pendingRegistrations)
+            {
+                var lookup = await _pointLookup.GetByNameAsync(pointName, cancellationToken);
                 
                 if (lookup != null && lookup.SequenceId > 0)
                 {
                     enrichedPoints.Add(new DataPoint
                     {
                         PointSequenceId = lookup.SequenceId,
-                        PointName = point.PointName,
-                        Timestamp = point.Timestamp,
-                        Value = point.Value,
-                        Quality = point.Quality
+                        PointName = pointName,
+                        Timestamp = original.Timestamp,
+                        Value = original.Value,
+                        Quality = original.Quality
                     });
                     resolved++;
                 }
                 else
                 {
                     _logger.LogWarning(
-                        "Batch {BatchId}: Could not resolve or register '{PointName}'",
-                        batchId, point.PointName);
-                    enrichedPoints.Add(point);
+                        "Batch {BatchId}: Could not resolve '{PointName}' after registration",
+                        batchId, pointName);
+                    enrichedPoints.Add(original);
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex,
-                    "Batch {BatchId}: Failed for '{PointName}'",
-                    batchId, point.PointName);
-                enrichedPoints.Add(point);
             }
         }
         
@@ -406,8 +457,55 @@ public sealed class IngestionPipeline : IIngestionPipeline, IAsyncDisposable
     }
     
     /// <summary>
+    /// Register a new point WITHOUT refreshing the cache.
+    /// Used for batch registrations where cache is refreshed once at the end.
+    /// </summary>
+    private async Task<bool> AutoRegisterPointWithoutRefreshAsync(
+        string pointName,
+        string? dataSourceIdString,
+        CancellationToken cancellationToken)
+    {
+        // Parse DataSourceId if provided
+        Guid? dataSourceId = null;
+        if (!string.IsNullOrEmpty(dataSourceIdString) && Guid.TryParse(dataSourceIdString, out var parsed))
+        {
+            dataSourceId = parsed;
+        }
+        
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var pointRepo = scope.ServiceProvider.GetRequiredService<IPointRepository>();
+            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            
+            // Double-check it doesn't exist (race condition protection)
+            var existing = await _pointLookup.GetByNameAsync(pointName, cancellationToken);
+            if (existing != null && existing.HasSequenceId) return true;
+            
+            // Create the point with sensible defaults
+            var newPoint = Point.Create(
+                name: pointName,
+                dataSourceId: dataSourceId,
+                description: $"Auto-registered {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}"
+            );
+            
+            await pointRepo.AddAsync(newPoint, cancellationToken);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+            
+            _logger.LogDebug("Registered point: {PointName} → {PointId}", pointName, newPoint.Id);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to register point: {PointName}", pointName);
+            return false;
+        }
+    }
+    
+    /// <summary>
     /// Auto-register a new point when first seen. Creates in PostgreSQL and refreshes cache.
     /// This is the key to NAIA's zero-config philosophy - points appear automatically.
+    /// NOTE: For batch operations, use AutoRegisterPointWithoutRefreshAsync instead.
     /// </summary>
     private async Task<PointLookupResult?> AutoRegisterPointAsync(
         string pointName,

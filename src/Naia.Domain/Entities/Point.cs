@@ -148,6 +148,27 @@ public sealed class Point
     
     public void Disable() => IsEnabled = false;
     public void Enable() => IsEnabled = true;
+    
+    public void UpdateDescription(string? description)
+    {
+        Description = description;
+        UpdatedAt = DateTime.UtcNow;
+    }
+    
+    public void UpdateEngineeringUnits(string? units)
+    {
+        EngineeringUnits = units;
+        UpdatedAt = DateTime.UtcNow;
+    }
+    
+    public void UpdateMetadata(string? description = null, string? engineeringUnits = null)
+    {
+        if (description is not null)
+            Description = description;
+        if (engineeringUnits is not null)
+            EngineeringUnits = engineeringUnits;
+        UpdatedAt = DateTime.UtcNow;
+    }
 }
 
 /// <summary>
