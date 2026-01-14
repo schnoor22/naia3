@@ -155,6 +155,14 @@ public static class DependencyInjection
             return new KafkaDataPointConsumer(options, logger);
         });
         
+        // Pattern notifications via Kafka
+        services.AddSingleton<Naia.Application.Abstractions.IPatternNotifier>(sp =>
+        {
+            var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<KafkaOptions>>();
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Naia.Infrastructure.Messaging.KafkaPatternNotifier>>();
+            return new Naia.Infrastructure.Messaging.KafkaPatternNotifier(options, logger);
+        });
+        
         return services;
     }
 }

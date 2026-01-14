@@ -94,6 +94,9 @@ builder.Services.AddScoped<IKnowledgeBaseRepository, KnowledgeBaseRepository>();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IPatternHubNotifier, PatternHubNotifier>();
 
+// Kafka consumer to forward pattern notifications from PatternWorker to SignalR
+builder.Services.AddHostedService<KafkaPatternConsumer>();
+
 // =============================================================================
 // OPENTELEMETRY - Distributed Tracing
 // =============================================================================

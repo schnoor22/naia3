@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Naia.Domain")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a4083ef875de3356f5533764d6b3cd5876a7a93f")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+20df31e4081f62fa6ce7aa7b98fbe6f6e9179237")]
 [assembly: System.Reflection.AssemblyProductAttribute("Naia.Domain")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Naia.Domain")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

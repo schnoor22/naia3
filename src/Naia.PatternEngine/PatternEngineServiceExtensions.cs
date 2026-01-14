@@ -54,7 +54,7 @@ public static class PatternEngineServiceExtensions
             questDbConnection += ";Server Compatibility Mode=NoTypeLoading";
         }
 
-        // Configure Hangfire with PostgreSQL storage
+        // Configure Hangfire client (dashboard and job scheduling only, no server)
         services.AddHangfire(config => config
             .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
             .UseSimpleAssemblyNameTypeSerializer()
@@ -62,12 +62,8 @@ public static class PatternEngineServiceExtensions
             .UsePostgreSqlStorage(c => c.UseNpgsqlConnection(postgresConnection))
             .UseConsole());
 
-        // Configure Hangfire server with queues
-        services.AddHangfireServer(serverOptions =>
-        {
-            serverOptions.WorkerCount = options.Hangfire.WorkerCount;
-            serverOptions.Queues = new[] { "analysis", "matching", "learning", "maintenance", "default" };
-        });
+        // Note: Hangfire server is hosted in Naia.PatternWorker
+        // API only needs Hangfire dashboard for monitoring
 
         // Register job implementations with their dependencies
         services.AddScoped<IBehavioralAnalysisJob>(sp =>

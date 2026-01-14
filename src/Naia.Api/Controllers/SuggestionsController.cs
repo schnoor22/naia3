@@ -17,16 +17,16 @@ public class SuggestionsController : ControllerBase
 {
     private readonly ILogger<SuggestionsController> _logger;
     private readonly ISuggestionRepository _suggestionRepository;
-    private readonly IPatternHubNotifier _hubNotifier;
+    private readonly IPatternNotifier _patternNotifier;
 
     public SuggestionsController(
         ILogger<SuggestionsController> logger,
         ISuggestionRepository suggestionRepository,
-        IPatternHubNotifier hubNotifier)
+        IPatternNotifier patternNotifier)
     {
         _logger = logger;
         _suggestionRepository = suggestionRepository;
-        _hubNotifier = hubNotifier;
+        _patternNotifier = patternNotifier;
     }
 
     /// <summary>
@@ -104,10 +104,10 @@ public class SuggestionsController : ControllerBase
             userId: request?.UserId ?? "anonymous",
             ct: ct);
 
-        // Notify connected clients via SignalR
+        // Notify connected clients via Kafka → SignalR
         var pendingCount = await _suggestionRepository.CountPendingAsync(ct);
-        await _hubNotifier.NotifyPendingCountChangedAsync(pendingCount);
-        await _hubNotifier.NotifySuggestionApprovedAsync(id, suggestion.PatternName);
+        await _patternNotifier.NotifyPendingCountChangedAsync(pendingCount);
+        await _patternNotifier.NotifySuggestionApprovedAsync(id, suggestion.PatternName);
 
         return Ok(new { message = "Suggestion approved - NAIA is learning!", suggestionId = id });
     }
@@ -144,9 +144,9 @@ public class SuggestionsController : ControllerBase
             userId: request?.UserId ?? "anonymous",
             ct: ct);
 
-        // Notify connected clients via SignalR
+        // Notify connected clients via Kafka → SignalR
         var pendingCount = await _suggestionRepository.CountPendingAsync(ct);
-        await _hubNotifier.NotifyPendingCountChangedAsync(pendingCount);
+        await _patternNotifier.NotifyPendingCountChangedAsync(pendingCount);
 
         return Ok(new { message = "Feedback recorded - NAIA will improve!", suggestionId = id });
     }
