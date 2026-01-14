@@ -38,7 +38,7 @@ public class KnowledgeBaseRepository : IKnowledgeBaseRepository
             SELECT id, abbreviation, expansion, context, measurement_type, 
                    priority, is_active, notes, created_at, updated_at
             FROM knowledge_abbreviations
-            WHERE (@context IS NULL OR LOWER(context) = LOWER(@context))
+            WHERE (@context::text IS NULL OR LOWER(context) = LOWER(@context))
             ORDER BY priority DESC, abbreviation
             OFFSET @skip LIMIT @take";
 
@@ -794,8 +794,8 @@ public class KnowledgeBaseRepository : IKnowledgeBaseRepository
         Name = reader.GetString(1),
         Alias = reader.IsDBNull(2) ? null : reader.GetString(2),
         Industry = reader.GetString(3),
-        TagPrefixes = ((string[])reader.GetValue(4)).ToList(),
-        NamingPatterns = ((string[])reader.GetValue(5)).ToList(),
+        TagPrefixes = reader.IsDBNull(4) ? new List<string>() : ((string[])reader.GetValue(4)).ToList(),
+        NamingPatterns = reader.IsDBNull(5) ? new List<string>() : ((string[])reader.GetValue(5)).ToList(),
         Notes = reader.IsDBNull(6) ? null : reader.GetString(6),
         IsActive = reader.GetBoolean(7),
         CreatedAt = reader.GetDateTime(8)
@@ -1053,5 +1053,56 @@ public class KnowledgeBaseRepository : IKnowledgeBaseRepository
         }
         
         return results;
+    }
+
+    // ============================================================================
+    // Documentation Format Schemas (stub implementations)
+    // TODO: Implement database schema and full CRUD when documentation formats are needed
+    // ============================================================================
+
+    public Task<IReadOnlyList<DocumentationFormatDto>> GetDocumentationFormatsAsync(CancellationToken ct = default)
+    {
+        // Return empty list for now - documentation format feature not yet implemented
+        return Task.FromResult<IReadOnlyList<DocumentationFormatDto>>(Array.Empty<DocumentationFormatDto>());
+    }
+
+    public Task<DocumentationFormatDto?> GetDocumentationFormatByIdAsync(int id, CancellationToken ct = default)
+    {
+        // Not yet implemented
+        return Task.FromResult<DocumentationFormatDto?>(null);
+    }
+
+    public Task<int> CreateDocumentationFormatAsync(CreateDocumentationFormatRequest request, CancellationToken ct = default)
+    {
+        // Not yet implemented - would create in database
+        throw new NotImplementedException("Documentation format creation not yet implemented. Database schema required.");
+    }
+
+    public Task<bool> UpdateDocumentationFormatAsync(int id, UpdateDocumentationFormatRequest request, CancellationToken ct = default)
+    {
+        // Not yet implemented
+        throw new NotImplementedException("Documentation format update not yet implemented. Database schema required.");
+    }
+
+    public Task<bool> DeleteDocumentationFormatAsync(int id, CancellationToken ct = default)
+    {
+        // Not yet implemented
+        throw new NotImplementedException("Documentation format deletion not yet implemented. Database schema required.");
+    }
+
+    public Task<DocumentationValidationResultDto> ValidateDocumentationAsync(
+        int formatId,
+        string documentationContent,
+        CancellationToken ct = default)
+    {
+        // Return a valid result for now - validation not yet implemented
+        return Task.FromResult(new DocumentationValidationResultDto
+        {
+            IsValid = true,
+            FormatId = formatId,
+            MatchScore = 1.0,
+            Errors = new List<ValidationErrorDto>(),
+            Warnings = new List<ValidationWarningDto>()
+        });
     }
 }

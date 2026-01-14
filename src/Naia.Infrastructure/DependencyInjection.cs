@@ -7,6 +7,7 @@ using Naia.Infrastructure.Caching;
 using Naia.Infrastructure.Messaging;
 using Naia.Infrastructure.Persistence;
 using Naia.Infrastructure.Pipeline;
+using Naia.Infrastructure.Resilience;
 using Naia.Infrastructure.TimeSeries;
 using Npgsql;
 using StackExchange.Redis;
@@ -30,6 +31,7 @@ public static class DependencyInjection
         services.Configure<RedisOptions>(configuration.GetSection(RedisOptions.SectionName));
         services.Configure<KafkaOptions>(configuration.GetSection(KafkaOptions.SectionName));
         services.Configure<PipelineOptions>(configuration.GetSection(PipelineOptions.SectionName));
+        services.Configure<ShadowBufferOptions>(configuration.GetSection(ShadowBufferOptions.SectionName));
         
         // PostgreSQL
         services.AddPostgreSql(configuration);
@@ -42,6 +44,9 @@ public static class DependencyInjection
         
         // Kafka
         services.AddKafka(configuration);
+        
+        // Data Resilience (TIC + Shadow Historian)
+        services.AddDataResilience(configuration);
         
         // Pipeline MUST be singleton because it maintains long-lived background tasks and state.
         // If scoped, it gets disposed when the DI scope exits but ProcessLoopAsync continues running.
@@ -162,6 +167,29 @@ public static class DependencyInjection
             var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Naia.Infrastructure.Messaging.KafkaPatternNotifier>>();
             return new Naia.Infrastructure.Messaging.KafkaPatternNotifier(options, logger);
         });
+        
+        return services;
+    }
+    
+    /// <summary>
+    /// Configure Data Resilience services (Temporal Integrity Chain + Shadow Historian).
+    /// These services provide zero-data-loss guarantees by:
+    /// 1. TIC: Cryptographic chain linking batches for instant gap detection
+    /// 2. Shadow Buffer: Local SQLite backup of all data before Kafka
+    /// 3. Gap Recovery: Automatic healing using shadow buffer data
+    /// </summary>
+    public static IServiceCollection AddDataResilience(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // Shadow Buffer (SQLite-based local backup)
+        services.AddSingleton<IShadowBuffer, SqliteShadowBuffer>();
+        
+        // Temporal Integrity Chain (Redis-based chain service)
+        services.AddSingleton<IIntegrityChainService, RedisIntegrityChainService>();
+        
+        // Gap Recovery Service (coordinates TIC + Shadow for auto-healing)
+        services.AddSingleton<IGapRecoveryService, GapRecoveryService>();
         
         return services;
     }
