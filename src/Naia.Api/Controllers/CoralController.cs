@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Naia.Api.Services;
 
 namespace Naia.Api.Controllers;
@@ -9,6 +10,7 @@ namespace Naia.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/coral")]
+[EnableRateLimiting("CoralAI")]
 public class CoralController : ControllerBase
 {
     private readonly CoralAssistantService _coral;

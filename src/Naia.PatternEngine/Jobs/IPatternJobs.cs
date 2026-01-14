@@ -102,3 +102,26 @@ public interface IMaintenanceJob
     [Queue("maintenance")]
     Task ExecuteAsync(PerformContext? context, CancellationToken cancellationToken);
 }
+
+/// <summary>
+/// Proactive pattern matching job interface - matches points against patterns using
+/// knowledge base (abbreviations, naming conventions) without waiting for behavioral analysis.
+/// </summary>
+public interface IProactivePatternMatchingJob
+{
+    /// <summary>
+    /// Run proactive pattern matching using knowledge base instead of behavioral data.
+    /// Uses abbreviation expansions, unit mappings, and naming conventions to identify
+    /// likely equipment patterns immediately when points are registered.
+    /// </summary>
+    [AutomaticRetry(Attempts = 3, DelaysInSeconds = [60, 120, 300])]
+    [Queue("matching")]
+    Task ExecuteAsync(PerformContext? context, CancellationToken cancellationToken);
+    
+    /// <summary>
+    /// Execute for a specific data source only.
+    /// </summary>
+    [AutomaticRetry(Attempts = 3, DelaysInSeconds = [60, 120, 300])]
+    [Queue("matching")]
+    Task ExecuteForDataSourceAsync(Guid dataSourceId, PerformContext? context, CancellationToken cancellationToken);
+}

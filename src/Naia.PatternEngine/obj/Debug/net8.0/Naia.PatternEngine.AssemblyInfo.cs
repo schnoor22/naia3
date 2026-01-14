@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyDescriptionAttribute("NAIA Pattern Flywheel - Hangfire-based pattern learning and matching engine")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+5ad75b77edd49ab3965d1dceb35e99479254d70d")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+7cf12d133649f9a3bbc33442714461ca67c3e1ab")]
 [assembly: System.Reflection.AssemblyProductAttribute("Naia.PatternEngine")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Naia.PatternEngine")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

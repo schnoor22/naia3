@@ -130,3 +130,5 @@ C:\naia3\src\Naia.Api\obj\Debug\net8.0\refint\Naia.Api.dll
 C:\naia3\src\Naia.Api\obj\Debug\net8.0\Naia.Api.pdb
 C:\naia3\src\Naia.Api\obj\Debug\net8.0\Naia.Api.genruntimeconfig.cache
 C:\naia3\src\Naia.Api\obj\Debug\net8.0\ref\Naia.Api.dll
+C:\naia3\src\Naia.Api\bin\Debug\net8.0\Polly.dll
+C:\naia3\src\Naia.Api\bin\Debug\net8.0\Polly.Core.dll

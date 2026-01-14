@@ -15,6 +15,7 @@ using Naia.PatternEngine;
 using Serilog;
 using Serilog.Events;
 using StackExchange.Redis;
+using System.Threading.RateLimiting;
 
 // =============================================================================
 // SERILOG CONFIGURATION - Structured Logging to PostgreSQL + Console
@@ -116,6 +117,69 @@ builder.Services.AddCors(options =>
     });
 });
 
+// =============================================================================
+// RATE LIMITING - Protect against abuse and DoS
+// =============================================================================
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    
+    // Global limiter: 100 requests per second per IP
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+    {
+        var ipAddress = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(ipAddress, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 100,
+            Window = TimeSpan.FromSeconds(1),
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = 10
+        });
+    });
+    
+    // SQL Console: Very restricted - 10 queries per minute per IP
+    options.AddPolicy("SqlConsole", httpContext =>
+    {
+        var ipAddress = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(ipAddress, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = 2
+        });
+    });
+    
+    // Coral AI: 20 requests per minute per IP (expensive AI operations)
+    options.AddPolicy("CoralAI", httpContext =>
+    {
+        var ipAddress = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetSlidingWindowLimiter(ipAddress, _ => new SlidingWindowRateLimiterOptions
+        {
+            PermitLimit = 20,
+            Window = TimeSpan.FromMinutes(1),
+            SegmentsPerWindow = 4,
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = 5
+        });
+    });
+    
+    options.OnRejected = async (context, token) =>
+    {
+        Log.Warning("Rate limit exceeded for {IP} on {Path}", 
+            context.HttpContext.Connection.RemoteIpAddress,
+            context.HttpContext.Request.Path);
+        
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        await context.HttpContext.Response.WriteAsJsonAsync(new
+        {
+            error = "Rate limit exceeded",
+            retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter) 
+                ? retryAfter.TotalSeconds : 60
+        }, token);
+    };
+});
+
 // Configure to listen on all interfaces (IPv4 and IPv6)
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
@@ -126,6 +190,9 @@ var app = builder.Build();
 
 // Configure the HTTP request pipeline.
 app.UseCors("AllowUI");
+
+// Rate limiting - must be early to protect all endpoints
+app.UseRateLimiter();
 
 // Master access override - must be early in pipeline
 app.UseMasterAccess();

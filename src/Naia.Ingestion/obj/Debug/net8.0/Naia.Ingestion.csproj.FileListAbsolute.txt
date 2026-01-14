@@ -93,3 +93,5 @@ C:\naia3\src\Naia.Ingestion\obj\Debug\net8.0\refint\Naia.Ingestion.dll
 C:\naia3\src\Naia.Ingestion\obj\Debug\net8.0\Naia.Ingestion.pdb
 C:\naia3\src\Naia.Ingestion\obj\Debug\net8.0\Naia.Ingestion.genruntimeconfig.cache
 C:\naia3\src\Naia.Ingestion\obj\Debug\net8.0\ref\Naia.Ingestion.dll
+C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Polly.dll
+C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Polly.Core.dll

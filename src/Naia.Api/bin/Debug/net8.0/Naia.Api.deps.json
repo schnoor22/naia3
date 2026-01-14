@@ -532,6 +532,25 @@
           }
         }
       },
+      "Polly/8.2.1": {
+        "dependencies": {
+          "Polly.Core": "8.2.1"
+        },
+        "runtime": {
+          "lib/net6.0/Polly.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.2.1.2874"
+          }
+        }
+      },
+      "Polly.Core/8.2.1": {
+        "runtime": {
+          "lib/net8.0/Polly.Core.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.2.1.2874"
+          }
+        }
+      },
       "Serilog/3.1.1": {
         "runtime": {
           "lib/net7.0/Serilog.dll": {
@@ -803,6 +822,7 @@
           "Naia.Application": "1.0.0",
           "Naia.Domain": "1.0.0",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "8.0.11",
+          "Polly": "8.2.1",
           "StackExchange.Redis": "2.8.16",
           "net-questdb-client": "2.1.0"
         },
@@ -1082,6 +1102,20 @@
       "sha512": "sha512-zG2FApP5zxSx6OcdJQLbZDk2AVlN2BNQD6MorwIfV6gVj0RRxWPEp2LXAxqDGZqeNV1Zp0BNPcNaey/GXmTdvQ==",
       "path": "pipelines.sockets.unofficial/2.2.8",
       "hashPath": "pipelines.sockets.unofficial.2.2.8.nupkg.sha512"
+    },
+    "Polly/8.2.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-tVHvP5Z0fNoZCE9mpKAsh0IaValwsTGPrqjlWqkWR/Gpl5jL05HWC/AVGSL+jkAqkl1Jn7uBUOArnRD+dK5PfQ==",
+      "path": "polly/8.2.1",
+      "hashPath": "polly.8.2.1.nupkg.sha512"
+    },
+    "Polly.Core/8.2.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-/Z3EspfWBdTla4I9IAcQn32/7kB5WS3rSnOYloz8YlVyClu8h7uuYf4pfUvffOYVbxmDX/mFRfxwzqW2Zs96ZA==",
+      "path": "polly.core/8.2.1",
+      "hashPath": "polly.core.8.2.1.nupkg.sha512"
     },
     "Serilog/3.1.1": {
       "type": "package",

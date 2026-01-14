@@ -1,21 +1,35 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Naia.Infrastructure.Persistence;
 using System.Data;
+using System.Text.RegularExpressions;
 
 namespace Naia.Api.Controllers;
 
 /// <summary>
 /// Admin SQL Controller - Direct SQL access for development and debugging.
-/// Supports both PostgreSQL and QuestDB queries.
+/// Supports both PostgreSQL and QuestDB queries with security restrictions.
 /// </summary>
 [ApiController]
 [Route("api/admin")]
+[EnableRateLimiting("SqlConsole")]
 public class AdminSqlController : ControllerBase
 {
     private readonly ILogger<AdminSqlController> _logger;
     private readonly NaiaDbContext _db;
     private readonly IConfiguration _configuration;
+    
+    // Dangerous keywords that should NEVER appear anywhere in a query (unless master mode)
+    private static readonly string[] DangerousKeywords = {
+        "DROP", "TRUNCATE", "ALTER", "GRANT", "REVOKE", "CREATE USER", 
+        "CREATE ROLE", "VACUUM", "REINDEX", "CLUSTER", "COPY", "\\\\copy"
+    };
+    
+    // Keywords that require master mode (write operations)
+    private static readonly string[] WriteKeywords = {
+        "INSERT", "UPDATE", "DELETE", "CREATE", "MERGE", "UPSERT"
+    };
 
     public AdminSqlController(
         ILogger<AdminSqlController> logger,
@@ -39,22 +53,45 @@ public class AdminSqlController : ControllerBase
             return BadRequest(new { error = "Query is required" });
 
         var query = request.Query.Trim();
-        var isSelect = query.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase) ||
-                       query.StartsWith("WITH", StringComparison.OrdinalIgnoreCase) ||
-                       query.StartsWith("EXPLAIN", StringComparison.OrdinalIgnoreCase);
+        var queryUpper = query.ToUpperInvariant();
         
-        var hasMasterAccess = User.HasClaim("master_access", "true");
-
-        // Non-SELECT queries require master access
-        if (!isSelect && !hasMasterAccess)
+        var hasMasterAccess = Request.Headers.TryGetValue("X-Master-Token", out var token) &&
+            token.ToString() == (_configuration["MasterToken"] ?? Environment.GetEnvironmentVariable("NAIA_MASTER_TOKEN"));
+        
+        // SECURITY: Check for dangerous keywords that are NEVER allowed
+        foreach (var keyword in DangerousKeywords)
         {
-            return StatusCode(403, new { error = "Write operations require Master access" });
+            if (queryUpper.Contains(keyword))
+            {
+                _logger.LogWarning("BLOCKED dangerous SQL keyword '{Keyword}' from {IP}", 
+                    keyword, HttpContext.Connection.RemoteIpAddress);
+                await AuditQueryAsync("BLOCKED", query, 0, 0, hasMasterAccess, $"Blocked: {keyword}");
+                return StatusCode(403, new { error = $"Query contains forbidden keyword: {keyword}" });
+            }
+        }
+        
+        // Check if this is a read-only query
+        var isReadOnly = queryUpper.StartsWith("SELECT") || 
+                         queryUpper.StartsWith("EXPLAIN") ||
+                         queryUpper.StartsWith("SHOW") ||
+                         (queryUpper.StartsWith("WITH") && !ContainsWriteKeyword(queryUpper));
+
+        // Non-read-only queries require master access
+        if (!isReadOnly && !hasMasterAccess)
+        {
+            _logger.LogWarning("Write SQL blocked - no master access from {IP}", 
+                HttpContext.Connection.RemoteIpAddress);
+            await AuditQueryAsync("DENIED", query, 0, 0, false, "Write operation without master access");
+            return StatusCode(403, new { error = "Write operations require Master access (X-Master-Token header)" });
         }
 
-        _logger.LogInformation("SQL query from {User}: {Query}", 
-            User.Identity?.Name ?? "Anonymous",
+        _logger.LogInformation("SQL query from {IP} (Master: {IsMaster}): {Query}", 
+            HttpContext.Connection.RemoteIpAddress,
+            hasMasterAccess,
             query.Length > 100 ? query.Substring(0, 100) + "..." : query);
 
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        
         try
         {
             using var connection = _db.Database.GetDbConnection();
@@ -64,7 +101,7 @@ public class AdminSqlController : ControllerBase
             command.CommandText = query;
             command.CommandTimeout = 30; // 30 second timeout
 
-            if (isSelect)
+            if (isReadOnly)
             {
                 // Return result set
                 using var reader = await command.ExecuteReaderAsync();
@@ -98,12 +135,16 @@ public class AdminSqlController : ControllerBase
                     rowCount++;
                 }
 
+                stopwatch.Stop();
+                await AuditQueryAsync("SELECT", query, rowCount, (int)stopwatch.ElapsedMilliseconds, hasMasterAccess, null);
+
                 return Ok(new
                 {
                     columns,
                     rows,
                     rowCount,
-                    truncated = rowCount >= maxRows
+                    truncated = rowCount >= maxRows,
+                    executionMs = stopwatch.ElapsedMilliseconds
                 });
             }
             else
@@ -111,18 +152,90 @@ public class AdminSqlController : ControllerBase
                 // Execute non-query (INSERT, UPDATE, DELETE, etc.)
                 var affectedRows = await command.ExecuteNonQueryAsync();
                 
-                _logger.LogWarning("Write query executed by {User}: {Query} - {Rows} rows affected",
-                    User.Identity?.Name ?? "Master",
+                stopwatch.Stop();
+                
+                _logger.LogWarning("Write query executed (Master Mode): {Query} - {Rows} rows affected",
                     query.Length > 50 ? query.Substring(0, 50) + "..." : query,
                     affectedRows);
+                
+                await AuditQueryAsync("WRITE", query, affectedRows, (int)stopwatch.ElapsedMilliseconds, true, null);
 
-                return Ok(new { affectedRows, success = true });
+                return Ok(new { affectedRows, success = true, executionMs = stopwatch.ElapsedMilliseconds });
             }
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
             _logger.LogError(ex, "SQL query error");
+            await AuditQueryAsync("ERROR", query, 0, (int)stopwatch.ElapsedMilliseconds, hasMasterAccess, ex.Message);
             return BadRequest(new { error = ex.Message });
+        }
+    }
+    
+    private static bool ContainsWriteKeyword(string queryUpper)
+    {
+        return WriteKeywords.Any(kw => Regex.IsMatch(queryUpper, $@"\b{kw}\b"));
+    }
+    
+    private async Task AuditQueryAsync(string queryType, string query, int rowCount, int executionMs, bool isMasterMode, string? error)
+    {
+        try
+        {
+            using var connection = _db.Database.GetDbConnection();
+            if (connection.State != ConnectionState.Open)
+                await connection.OpenAsync();
+            
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = @"
+                INSERT INTO sql_audit_log (user_name, ip_address, query_type, query_text, row_count, execution_ms, is_master_mode, error_message)
+                VALUES (@user, @ip, @type, @query, @rows, @ms, @master, @error)";
+            
+            var pUser = cmd.CreateParameter();
+            pUser.ParameterName = "@user";
+            pUser.Value = (object?)User.Identity?.Name ?? "anonymous";
+            cmd.Parameters.Add(pUser);
+            
+            var pIp = cmd.CreateParameter();
+            pIp.ParameterName = "@ip";
+            pIp.Value = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            cmd.Parameters.Add(pIp);
+            
+            var pType = cmd.CreateParameter();
+            pType.ParameterName = "@type";
+            pType.Value = queryType;
+            cmd.Parameters.Add(pType);
+            
+            var pQuery = cmd.CreateParameter();
+            pQuery.ParameterName = "@query";
+            pQuery.Value = query.Length > 4000 ? query.Substring(0, 4000) : query;
+            cmd.Parameters.Add(pQuery);
+            
+            var pRows = cmd.CreateParameter();
+            pRows.ParameterName = "@rows";
+            pRows.Value = rowCount;
+            cmd.Parameters.Add(pRows);
+            
+            var pMs = cmd.CreateParameter();
+            pMs.ParameterName = "@ms";
+            pMs.Value = executionMs;
+            cmd.Parameters.Add(pMs);
+            
+            var pMaster = cmd.CreateParameter();
+            pMaster.ParameterName = "@master";
+            pMaster.Value = isMasterMode;
+            cmd.Parameters.Add(pMaster);
+            
+            var pError = cmd.CreateParameter();
+            pError.ParameterName = "@error";
+            pError.Value = (object?)error ?? DBNull.Value;
+            cmd.Parameters.Add(pError);
+            
+            await cmd.ExecuteNonQueryAsync();
+        }
+        catch (Exception ex)
+        {
+            // Audit logging failure shouldn't block the query
+            _logger.LogWarning(ex, "Failed to write SQL audit log");
         }
     }
 
