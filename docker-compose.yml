@@ -241,6 +241,67 @@ services:
     networks:
       - naia-network
 
+  # =============================================================================
+  # JAEGER - Distributed Tracing
+  # =============================================================================
+  jaeger:
+    image: jaegertracing/all-in-one:1.53
+    container_name: naia-jaeger
+    hostname: jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
+    restart: unless-stopped
+    networks:
+      - naia-network
+
+  # =============================================================================
+  # PROMETHEUS - Metrics Collection
+  # =============================================================================
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: naia-prometheus
+    hostname: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    restart: unless-stopped
+    networks:
+      - naia-network
+
+  # =============================================================================
+  # GRAFANA - Metrics Visualization & Dashboards
+  # =============================================================================
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: naia-grafana
+    hostname: grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: naia_grafana
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: "http://localhost:3000"
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+      - jaeger
+    restart: unless-stopped
+    networks:
+      - naia-network
+
 # =============================================================================
 # VOLUMES
 # =============================================================================
@@ -257,6 +318,10 @@ volumes:
     name: naia-zookeeper-log
   kafka_data:
     name: naia-kafka-data
+  prometheus_data:
+    name: naia-prometheus-data
+  grafana_data:
+    name: naia-grafana-data
 
 # =============================================================================
 # NETWORKS

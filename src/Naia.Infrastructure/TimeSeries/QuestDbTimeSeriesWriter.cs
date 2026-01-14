@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Naia.Application.Abstractions;
 using Naia.Domain.ValueObjects;
+using Naia.Infrastructure.Telemetry;
 using Npgsql;
 using Polly;
 using Polly.CircuitBreaker;
@@ -140,7 +141,12 @@ public sealed class QuestDbTimeSeriesWriter : ITimeSeriesWriter, IAsyncDisposabl
 
         try
         {
-            // Use resilience pipeline for write operation
+            // Use resilience pipeline for write operation with metrics
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            using var span = NaiaMetrics.StartSpan("questdb.write");
+            span?.SetTag("batch.id", batch.BatchId ?? "unknown");
+            span?.SetTag("batch.size", linesList.Count);
+            
             await _resiliencePipeline.ExecuteAsync(async ct =>
             {
                 var content = new StringContent(ilpContent, Encoding.UTF8, "text/plain");
@@ -151,21 +157,27 @@ public sealed class QuestDbTimeSeriesWriter : ITimeSeriesWriter, IAsyncDisposabl
                     var error = await response.Content.ReadAsStringAsync(ct);
                     _logger.LogError("QuestDB write failed. Batch: {BatchId}, Status: {StatusCode}, Error: {Error}", 
                         batch.BatchId, response.StatusCode, error);
+                    NaiaMetrics.DataPointsWritten.WithLabels("questdb", "error").Inc(linesList.Count);
                     throw new InvalidOperationException($"QuestDB write failed: {response.StatusCode} - {error}");
                 }
                 
                 _logger.LogDebug("Wrote {Count} points to QuestDB", batch.Count);
+                NaiaMetrics.DataPointsWritten.WithLabels("questdb", "success").Inc(linesList.Count);
+                stopwatch.Stop();
+                NaiaMetrics.DataPointWriteLatency.WithLabels("questdb").Observe(stopwatch.Elapsed.TotalSeconds);
             }, cancellationToken);
         }
         catch (BrokenCircuitException)
         {
             _logger.LogError("QuestDB circuit breaker is open - sending batch {BatchId} to dead letter queue", batch.BatchId);
+            NaiaMetrics.DataPointsWritten.WithLabels("questdb", "circuit_breaker").Inc(pointsToWrite.Count);
             await WriteToDeadLetterQueueAsync(pointsToWrite, batch.BatchId, "Circuit breaker open", cancellationToken);
             throw;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to write batch {BatchId} to QuestDB after all retries - sending to dead letter queue", batch.BatchId);
+            NaiaMetrics.DataPointsWritten.WithLabels("questdb", "dlq").Inc(pointsToWrite.Count);
             await WriteToDeadLetterQueueAsync(pointsToWrite, batch.BatchId, ex.Message, cancellationToken);
             throw;
         }
@@ -206,6 +218,7 @@ public sealed class QuestDbTimeSeriesWriter : ITimeSeriesWriter, IAsyncDisposabl
             }
             
             _logger.LogWarning("Wrote {Count} points to dead letter queue", points.Count);
+            NaiaMetrics.DeadLetterQueueSize.Inc(points.Count);
         }
         catch (Exception ex)
         {

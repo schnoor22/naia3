@@ -10,8 +10,12 @@ using Naia.Domain.Entities;
 using Naia.Domain.ValueObjects;
 using Naia.Infrastructure;
 using Naia.Infrastructure.Persistence;
+using Naia.Infrastructure.Telemetry;
 using Naia.Api.Services;
 using Naia.PatternEngine;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using Prometheus;
 using Serilog;
 using Serilog.Events;
 using StackExchange.Redis;
@@ -89,6 +93,39 @@ builder.Services.AddScoped<IKnowledgeBaseRepository, KnowledgeBaseRepository>();
 // SignalR for real-time suggestion notifications
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IPatternHubNotifier, PatternHubNotifier>();
+
+// =============================================================================
+// OPENTELEMETRY - Distributed Tracing
+// =============================================================================
+var otlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"] ?? "http://localhost:4317";
+var serviceName = builder.Configuration["OpenTelemetry:ServiceName"] ?? "naia-api";
+
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource
+        .AddService(serviceName: serviceName, serviceVersion: "3.0.0")
+        .AddAttributes(new Dictionary<string, object>
+        {
+            ["deployment.environment"] = builder.Environment.EnvironmentName,
+            ["host.name"] = Environment.MachineName
+        }))
+    .WithTracing(tracing => tracing
+        .AddSource(NaiaMetrics.ActivitySource.Name)
+        .AddAspNetCoreInstrumentation(options =>
+        {
+            options.RecordException = true;
+            options.Filter = ctx => 
+                !ctx.Request.Path.StartsWithSegments("/metrics") &&
+                !ctx.Request.Path.StartsWithSegments("/health") &&
+                !ctx.Request.Path.StartsWithSegments("/hangfire");
+        })
+        .AddHttpClientInstrumentation(options =>
+        {
+            options.RecordException = true;
+        })
+        .AddOtlpExporter(options =>
+        {
+            options.Endpoint = new Uri(otlpEndpoint);
+        }));
 
 // Add Controllers for pattern APIs
 builder.Services.AddControllers();
@@ -187,6 +224,15 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
 });
 
 var app = builder.Build();
+
+// =============================================================================
+// PROMETHEUS METRICS - /metrics endpoint
+// =============================================================================
+app.UseHttpMetrics(options =>
+{
+    // Track request duration, count, and in-progress requests
+    options.AddCustomLabel("host", context => context.Request.Host.Host);
+});
 
 // Configure the HTTP request pipeline.
 app.UseCors("AllowUI");
@@ -1816,6 +1862,20 @@ app.MapGet("/api/backfill/request/{requestId:guid}", (
 // =============================================================================
 app.MapControllers();
 app.MapHub<PatternHub>("/hubs/patterns");
+
+// Prometheus metrics endpoint
+app.MapMetrics("/metrics");
+
+// Track application uptime
+var startTime = DateTime.UtcNow;
+_ = Task.Run(async () =>
+{
+    while (true)
+    {
+        NaiaMetrics.ApplicationUptime.Set((DateTime.UtcNow - startTime).TotalSeconds);
+        await Task.Delay(TimeSpan.FromSeconds(15));
+    }
+});
 
 // SPA fallback - must be after all API routes
 app.MapFallbackToFile("index.html");

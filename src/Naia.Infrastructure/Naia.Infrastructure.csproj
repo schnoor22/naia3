@@ -13,6 +13,13 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
     <PackageReference Include="Polly" Version="8.2.1" />
     <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
+    
+    <!-- OpenTelemetry instrumentation -->
+    <PackageReference Include="OpenTelemetry" Version="1.9.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.StackExchangeRedis" Version="1.0.0-rc9.14" />
+    
+    <!-- Prometheus metrics -->
+    <PackageReference Include="prometheus-net" Version="8.2.1" />
   </ItemGroup>
 
   <PropertyGroup>

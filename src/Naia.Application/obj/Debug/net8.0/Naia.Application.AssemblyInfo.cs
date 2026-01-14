@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Naia.Application")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+7cf12d133649f9a3bbc33442714461ca67c3e1ab")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a4083ef875de3356f5533764d6b3cd5876a7a93f")]
 [assembly: System.Reflection.AssemblyProductAttribute("Naia.Application")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Naia.Application")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

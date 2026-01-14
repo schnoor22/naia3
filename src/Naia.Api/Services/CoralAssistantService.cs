@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Naia.Infrastructure.Telemetry;
 using Npgsql;
 using StackExchange.Redis;
 
@@ -74,9 +75,13 @@ Guidelines:
         CoralContext? context = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        using var span = NaiaMetrics.StartSpan("coral.chat");
+        
         var apiKey = _configuration["Anthropic:ApiKey"] ?? Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
         if (string.IsNullOrEmpty(apiKey))
         {
+            NaiaMetrics.CoralConversations.WithLabels("error").Inc();
             yield return new CoralStreamEvent { Text = "I'm sorry, I'm not fully configured yet. Please ask your administrator to set up my connection." };
             yield break;
         }
@@ -116,11 +121,13 @@ Guidelines:
             var (response, connectError) = await TrySendRequestAsync(client, httpRequest, cancellationToken);
             if (connectError != null)
             {
+                NaiaMetrics.CoralConversations.WithLabels("error").Inc();
                 yield return new CoralStreamEvent { Text = "I'm having trouble connecting right now. Let me try to help another way." };
                 yield break;
             }
             if (response == null)
             {
+                NaiaMetrics.CoralConversations.WithLabels("error").Inc();
                 yield return new CoralStreamEvent { Text = "I encountered an unexpected issue. Please try again." };
                 yield break;
             }
@@ -129,6 +136,7 @@ Guidelines:
             {
                 var error = await response.Content.ReadAsStringAsync(cancellationToken);
                 _logger.LogError("Claude API error: {Status} - {Error}", response.StatusCode, error);
+                NaiaMetrics.CoralConversations.WithLabels("error").Inc();
                 yield return new CoralStreamEvent { Text = "I encountered an issue processing your request. Could you try rephrasing?" };
                 yield break;
             }
@@ -191,7 +199,10 @@ Guidelines:
             }
             else
             {
-                // Finished
+                // Finished - track successful conversation
+                stopwatch.Stop();
+                NaiaMetrics.CoralResponseLatency.WithLabels("chat").Observe(stopwatch.Elapsed.TotalSeconds);
+                NaiaMetrics.CoralConversations.WithLabels("success").Inc();
                 break;
             }
         }

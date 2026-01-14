@@ -95,3 +95,9 @@ C:\naia3\src\Naia.Ingestion\obj\Debug\net8.0\Naia.Ingestion.genruntimeconfig.cac
 C:\naia3\src\Naia.Ingestion\obj\Debug\net8.0\ref\Naia.Ingestion.dll
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Polly.dll
 C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Polly.Core.dll
+C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Microsoft.Extensions.ObjectPool.dll
+C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\OpenTelemetry.dll
+C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\OpenTelemetry.Api.dll
+C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\OpenTelemetry.Api.ProviderBuilderExtensions.dll
+C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\OpenTelemetry.Instrumentation.StackExchangeRedis.dll
+C:\naia3\src\Naia.Ingestion\bin\Debug\net8.0\Prometheus.NetStandard.dll
