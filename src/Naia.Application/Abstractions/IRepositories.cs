@@ -29,6 +29,11 @@ public interface IPointRepository
     Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
     
     /// <summary>
+    /// Save all pending changes to the database.
+    /// </summary>
+    Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+    
+    /// <summary>
     /// Get sequence ID mappings for efficient lookups.
     /// Returns: Dictionary of TagName → SequenceId
     /// </summary>

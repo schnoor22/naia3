@@ -135,6 +135,11 @@ public sealed class PointRepository : IPointRepository
         }
     }
     
+    public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.SaveChangesAsync(cancellationToken);
+    }
+    
     public async Task<IDictionary<string, long?>> GetTagNameToSequenceIdMapAsync(
         Guid dataSourceId,
         CancellationToken cancellationToken = default)
